@@ -81,13 +81,17 @@ public static class SetterIcon
     public static uint[] Compose(byte[] coverage, int size, uint color, bool on) =>
         Compose(coverage, size, color, on, DurationIndicator.None, 0);
 
+    public static uint[] Compose(byte[] coverage, int size, uint color, bool on, DurationIndicator indicator, double share) =>
+        Compose(coverage, size, color, dim: !on, bar: on, indicator, share);
+
     /// <param name="coverage">The glyph's ink (0–255) in a <see cref="GlyphSize(int, DurationIndicator)"/>-square, row-major.</param>
     /// <param name="size">Icon width and height in pixels.</param>
     /// <param name="color">0xAARRGGBB; white on a dark taskbar, black on a light one.</param>
-    /// <param name="on">Whether the setter is running. An indicator is only drawn for a running one.</param>
-    /// <param name="indicator">Drawn in place of the on bar; None for the plain icon.</param>
+    /// <param name="dim">Draw the glyph faded (<see cref="OffOpacity"/>).</param>
+    /// <param name="bar">Draw the short "on" bar under the glyph (unless an indicator takes its place).</param>
+    /// <param name="indicator">Drawn in place of the on bar; None for the plain icon. Pass None unless the setter runs.</param>
     /// <param name="share">The share of the run left, 0–1 (<see cref="Measure"/>).</param>
-    public static uint[] Compose(byte[] coverage, int size, uint color, bool on, DurationIndicator indicator, double share)
+    public static uint[] Compose(byte[] coverage, int size, uint color, bool dim, bool bar, DurationIndicator indicator, double share)
     {
         int glyph = GlyphSize(size, indicator);
         ArgumentOutOfRangeException.ThrowIfNotEqual(coverage.Length, glyph * glyph, nameof(coverage));
@@ -100,7 +104,7 @@ public static class SetterIcon
             DurationIndicator.VerticalBar => (0, centered),
             _ => (centered, 0),
         };
-        double strength = on ? 1 : OffOpacity;
+        double strength = dim ? OffOpacity : 1;
         for (int y = 0; y < glyph; y++)
         {
             for (int x = 0; x < glyph; x++)
@@ -125,7 +129,7 @@ public static class SetterIcon
                 DrawBar(pixels, size, color, share, vertical: true);
                 break;
             default:
-                if (on)
+                if (bar)
                 {
                     DrawOnBar(pixels, size, color);
                 }

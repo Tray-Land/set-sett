@@ -55,13 +55,37 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
     // A white glyph disappears on a light taskbar, which follows the Windows theme, not the app theme.
     private static uint Color => SystemThemeService.IsLight ? 0xFF000000 : 0xFFFFFFFF;
 
+    private static uint LookColor(IconColor color)
+    {
+        if (IconLook.Rgb(color) is { } rgb)
+        {
+            return rgb;
+        }
+
+        if (color == IconColor.Accent)
+        {
+            try
+            {
+                Windows.UI.Color accent = new Windows.UI.ViewManagement.UISettings()
+                    .GetColorValue(Windows.UI.ViewManagement.UIColorType.Accent);
+                return 0xFF000000 | ((uint)accent.R << 16) | ((uint)accent.G << 8) | accent.B;
+            }
+            catch
+            {
+                // Fall through to the taskbar color.
+            }
+        }
+
+        return Color;
+    }
+
     private static string AppIconPath => Path.Combine(
         AppContext.BaseDirectory, "Assets", SystemThemeService.IsLight ? "AppIcon-dark.ico" : "AppIcon.ico");
 
     /// <summary>Adds, updates, and removes icons to match the setters. Call on the UI thread.</summary>
     public void Sync()
     {
-        var wanted = SetterHost.Setters.Where(s => s.ShowTrayIcon && s.TrayIconId != 0).ToDictionary(s => s.Id);
+        var wanted = SetterHost.Setters.Where(s => s.Enabled && s.ShowTrayIcon && s.TrayIconId != 0).ToDictionary(s => s.Id);
 
         foreach (Slot slot in _slots.Values.Where(s => !wanted.ContainsKey(s.SetterId)).ToList())
         {
@@ -80,10 +104,13 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
             SetterRun? run = SetterHost.Run.RunOf(setter.Id);
             int size = IconSize;
             (DurationIndicator indicator, TimeLeft left) = Indicator(setter, run, size);
-            string key = $"{setter.Glyph}|{run is not null}|{Color}|{size}|{indicator}|{left.Share}";
+            IconLook look = run is not null ? setter.ActiveLook : setter.InactiveLook;
+            string glyph = string.IsNullOrEmpty(look.Glyph) ? setter.Glyph : look.Glyph;
+            uint color = LookColor(look.Color);
+            string key = $"{glyph}|{look.Dim}|{look.Bar}|{color}|{size}|{indicator}|{left.Share}";
             if (key != slot.Key)
             {
-                Draw(slot, setter.Glyph, run is not null, size, indicator, left.Share);
+                Draw(slot, glyph, look, color, size, indicator, left.Share);
                 slot.Key = key;
             }
 
@@ -194,7 +221,7 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
             {
                 Text = on ? "Stop" : "Start",
                 Icon = new FontIcon { Glyph = on ? "" : "" },
-                IsEnabled = setter.CanRun,
+                IsEnabled = setter.CanRun && (setter.Enabled || on),
             };
             toggle.Click += (_, _) => _ = SetterHost.ToggleAsync(setterId);
             menu.Items.Add(toggle);
@@ -211,11 +238,10 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
             AddTimerChoices(menu, setter, on);
         }
 
-        if (setter.IsAutomatic)
         {
             var pause = new MenuFlyoutItem
             {
-                Text = setter.Enabled ? "Pause" : "Resume",
+                Text = setter.Enabled ? "Disable" : "Enable",
                 Icon = new FontIcon { Glyph = setter.Enabled ? "" : "" },
             };
             pause.Click += (_, _) => SetterHost.SetEnabled(setterId, !setter.Enabled);
@@ -254,7 +280,7 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
             }
 
             string length = SetterText.Minutes(minutes);
-            var item = new MenuFlyoutItem { Text = on ? $"Stop in {length}" : $"Start for {length}", IsEnabled = setter.CanRun };
+            var item = new MenuFlyoutItem { Text = on ? $"Stop in {length}" : $"Start for {length}", IsEnabled = setter.CanRun && (setter.Enabled || on) };
             item.Click += (_, _) => _ = SetterHost.StartForAsync(setter.Id, TimeSpan.FromMinutes(minutes));
             items.Add(item);
         }
@@ -273,7 +299,7 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
         menu.Items.Add(new MenuFlyoutSeparator());
     }
 
-    private static void Draw(Slot slot, string glyph, bool on, int size, DurationIndicator indicator, double share)
+    private static void Draw(Slot slot, string glyph, IconLook look, uint color, int size, DurationIndicator indicator, double share)
     {
         int glyphSize = SetterIcon.GlyphSize(size, indicator);
         string coverageKey = $"{glyph}|{glyphSize}";
@@ -285,7 +311,7 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
             slot.CoverageKey = coverageKey;
         }
 
-        byte[] ico = IcoEncoder.Encode(SetterIcon.Compose(slot.Coverage, size, Color, on, indicator, share), size);
+        byte[] ico = IcoEncoder.Encode(SetterIcon.Compose(slot.Coverage, size, color, look.Dim, look.Bar, indicator, share), size);
 
         HICON icon;
         unsafe

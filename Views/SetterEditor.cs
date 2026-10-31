@@ -30,6 +30,7 @@ internal sealed partial class SetterEditor : UserControl
 
     private readonly Action _onDeleted;
     private readonly StackPanel _indicator = new() { Spacing = 4 };
+    private readonly StackPanel _looks = new() { Spacing = 4 };
     private readonly StackPanel _timerChoices = new() { Spacing = 4 };
     private readonly TextBlock _timerHint = Caption(
         "Add “After a while” under When it stops, and right-clicking this icon can start it for 15 min, 1 hr, or other lengths you pick.");
@@ -53,6 +54,7 @@ internal sealed partial class SetterEditor : UserControl
 
         var root = new StackPanel { Padding = new Thickness(32, 20, 32, 32), Spacing = 4, MaxWidth = 820, HorizontalAlignment = HorizontalAlignment.Stretch };
         root.Children.Add(Header());
+        root.Children.Add(EnabledCard());
         root.Children.Add(SectionTitle("What it changes"));
         root.Children.Add(_changes);
         root.Children.Add(SectionTitle("When it starts"));
@@ -137,6 +139,16 @@ internal sealed partial class SetterEditor : UserControl
         Grid.SetColumn(name, 1);
         grid.Children.Add(name);
         return grid;
+    }
+
+    private UIElement EnabledCard()
+    {
+        var toggle = new ToggleSwitch { IsOn = _setter.Enabled, OnContent = "", OffContent = "", MinWidth = 0 };
+        AutomationProperties.SetName(toggle, "Enabled");
+        toggle.Toggled += (_, _) => Commit(_setter with { Enabled = toggle.IsOn });
+        return Row("", "Enabled",
+            Caption("Turn off to keep this setter without it running. It stops if it's on, and nothing starts it until you turn it back on."),
+            toggle, remove: null);
     }
 
     // --- What it changes ------------------------------------------------------------------------
@@ -478,21 +490,23 @@ internal sealed partial class SetterEditor : UserControl
         var note = new InfoBar
         {
             Severity = InfoBarSeverity.Informational,
-            IsClosable = false,
-            IsOpen = _setter.ShowTrayIcon,
+            IsClosable = true,
+            IsOpen = _setter.ShowTrayIcon && !SettingsService.HideTaskbarNote,
             Title = "Windows may hide it at first",
             Message = "New tray icons start in the overflow (^) menu. To keep this one on the taskbar, turn it on under Other system tray icons.",
             ActionButton = TaskbarSettingsLink(),
         };
+        // Closing the note hides it for every setter, from now on.
+        note.Closed += (_, _) => SettingsService.HideTaskbarNote = true;
         var trayIcon = new ToggleSwitch { IsOn = _setter.ShowTrayIcon, OnContent = "", OffContent = "", MinWidth = 0 };
         AutomationProperties.SetName(trayIcon, "Give it its own tray icon");
         trayIcon.Toggled += (_, _) =>
         {
             Commit(_setter with { ShowTrayIcon = trayIcon.IsOn });
-            note.IsOpen = trayIcon.IsOn;
+            note.IsOpen = trayIcon.IsOn && !SettingsService.HideTaskbarNote;
         };
         panel.Children.Add(Row("", "Its own tray icon",
-            Caption("Click the icon to start or stop it. The icon is full while it's on and faded while it's off."),
+            Caption("Click the icon to start or stop it. By default it's full with a bar while it's on and faded while it's off; change that below."),
             trayIcon, remove: null, below: TrayIconDetails(note)));
         return panel;
     }
@@ -502,6 +516,12 @@ internal sealed partial class SetterEditor : UserControl
     {
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(note);
+
+        _looks.Children.Add(new TextBlock { Text = "How the icon looks" });
+        _looks.Children.Add(LookRow("When it's on", () => _setter.ActiveLook, look => _setter with { ActiveLook = look }));
+        _looks.Children.Add(LookRow("When it's off", () => _setter.InactiveLook, look => _setter with { InactiveLook = look }));
+        _looks.Children.Add(Caption("Pick a different icon, a color, whether it's dimmed, and whether the small bar sits under it, for each state."));
+        panel.Children.Add(_looks);
 
         var style = Combo(["None", "Donut", "Horizontal bar", "Vertical bar"], Math.Max(0, Array.IndexOf(Indicators, _setter.Indicator)),
             i => Commit(_setter with { Indicator = Indicators[i] }), "Time left on the icon", 160);
@@ -543,10 +563,73 @@ internal sealed partial class SetterEditor : UserControl
         return panel;
     }
 
+    private static readonly IconColor[] IconColors =
+        [IconColor.Taskbar, IconColor.Accent, IconColor.Red, IconColor.Orange, IconColor.Yellow, IconColor.Green, IconColor.Blue, IconColor.Purple];
+
+    // One state of the icon: a different glyph (or the setter's own), a color, dimmed or not, with the on bar or not.
+    private StackPanel LookRow(string title, Func<IconLook> get, Func<IconLook, Setter> apply)
+    {
+        void Change(Func<IconLook, IconLook> edit) => Commit(apply(edit(get())));
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        row.Children.Add(new TextBlock { Text = title, Width = 96, VerticalAlignment = VerticalAlignment.Center });
+
+        var glyph = new FontIcon { FontSize = 18 }.Set(string.IsNullOrEmpty(get().Glyph) ? _setter.Glyph : get().Glyph!);
+        var glyphButton = new DropDownButton { Content = glyph, Height = 32 };
+        AutomationProperties.SetName(glyphButton, $"Icon {title.ToLowerInvariant()}");
+        var flyout = new Flyout();
+        var rows = new StackPanel { Spacing = 4 };
+        var same = new Button { Content = "Same icon as the setter" };
+        same.Click += (_, _) =>
+        {
+            glyph.Set(_setter.Glyph);
+            Change(l => l with { Glyph = null });
+            flyout.Hide();
+        };
+        rows.Children.Add(same);
+        StackPanel? line = null;
+        for (int i = 0; i < Glyphs.Picker.Count; i++)
+        {
+            if (i % 8 == 0)
+            {
+                line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+                rows.Children.Add(line);
+            }
+
+            string choice = Glyphs.Picker[i];
+            var button = new Button { Content = new FontIcon { FontSize = 18 }.Set(choice), Width = 44, Height = 40, Padding = new Thickness(0) };
+            AutomationProperties.SetName(button, $"Icon {i + 1}");
+            button.Click += (_, _) =>
+            {
+                glyph.Set(choice);
+                Change(l => l with { Glyph = choice });
+                flyout.Hide();
+            };
+            line!.Children.Add(button);
+        }
+
+        flyout.Content = new ScrollViewer { Content = rows, MaxHeight = 360, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        glyphButton.Flyout = flyout;
+        row.Children.Add(glyphButton);
+
+        row.Children.Add(Combo(["Taskbar color", "Accent", "Red", "Orange", "Yellow", "Green", "Blue", "Purple"],
+            Math.Max(0, Array.IndexOf(IconColors, get().Color)),
+            i => Change(l => l with { Color = IconColors[i] }), $"Color {title.ToLowerInvariant()}", 130));
+
+        var dim = new CheckBox { Content = "Dimmed", IsChecked = get().Dim, MinWidth = 0 };
+        dim.Click += (_, _) => Change(l => l with { Dim = dim.IsChecked == true });
+        row.Children.Add(dim);
+        var bar = new CheckBox { Content = "Bar", IsChecked = get().Bar, MinWidth = 0 };
+        bar.Click += (_, _) => Change(l => l with { Bar = bar.IsChecked == true });
+        row.Children.Add(bar);
+        return row;
+    }
+
     // The indicator needs the tray icon; its lengths only apply to a click-to-start setter that stops after a while.
     private void ShowTrayIconDetails()
     {
         _indicator.Visibility = _setter.ShowTrayIcon ? Visibility.Visible : Visibility.Collapsed;
+        _looks.Visibility = _setter.ShowTrayIcon ? Visibility.Visible : Visibility.Collapsed;
         bool clickIcon = _setter.ShowTrayIcon && !_setter.IsAutomatic;
         _timerChoices.Visibility = clickIcon && _setter.HasTimer ? Visibility.Visible : Visibility.Collapsed;
         _timerHint.Visibility = clickIcon && !_setter.HasTimer ? Visibility.Visible : Visibility.Collapsed;

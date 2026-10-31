@@ -12,7 +12,7 @@ You build **setters**. A setter is:
 - **When it starts**: when you click it, or automatically when something happens.
 - **When it stops**: when you click it again, when its conditions end, or after any stop condition you add.
 - **Afterwards**: whether to put each setting back to what it was before it started.
-- **Where it shows**: a button in the flyout and, optionally, its own tray icon, which can show the time left in a timed run as a donut or a horizontal or vertical bar.
+- **Where it shows**: a button in the flyout and, optionally, its own tray icon, which can show the time left in a timed run as a donut or a horizontal or vertical bar. You choose how the icon looks when the setter is on and when it's off: a different icon, a color, dimmed or not, and the small "on" bar.
 
 | Settings it can change | |
 |---|---|

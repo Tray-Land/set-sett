@@ -24,6 +24,13 @@ internal static class SettingsService
         set => Set(nameof(HasLaunchedBefore), value);
     }
 
+    /// <summary>True once the user closed the editor's "Windows may hide it at first" note.</summary>
+    public static bool HideTaskbarNote
+    {
+        get => Get(nameof(HideTaskbarNote), false);
+        set => Set(nameof(HideTaskbarNote), value);
+    }
+
     /// <summary>
     /// The next tray icon id for a new setter. Ids are never reused, because Windows remembers per id
     /// whether the user lets an icon show on the taskbar. The app's own icon is 1.

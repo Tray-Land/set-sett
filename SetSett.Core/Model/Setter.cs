@@ -33,6 +33,55 @@ public enum DurationIndicator
     VerticalBar
 }
 
+/// <summary>The color a setter's tray icon is drawn in. Names are saved in setters.json.</summary>
+public enum IconColor
+{
+    /// <summary>The taskbar's text color: white on a dark taskbar, black on a light one.</summary>
+    Taskbar,
+
+    /// <summary>The Windows accent color.</summary>
+    Accent,
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Blue,
+    Purple
+}
+
+/// <summary>
+/// How a setter's tray icon looks in one state (running or not): its glyph (null: the setter's own),
+/// its color, whether it's dimmed, and whether the short "on" bar sits under it.
+/// </summary>
+public sealed record IconLook
+{
+    public string? Glyph { get; set; }
+
+    public IconColor Color { get; set; } = IconColor.Taskbar;
+
+    public bool Dim { get; set; }
+
+    public bool Bar { get; set; }
+
+    /// <summary>Running: full strength with the bar, as before.</summary>
+    public static IconLook DefaultActive => new() { Bar = true };
+
+    /// <summary>Not running: faded.</summary>
+    public static IconLook DefaultInactive => new() { Dim = true };
+
+    /// <summary>Fixed colors that read on a light or a dark taskbar; null for <see cref="IconColor.Taskbar"/> and <see cref="IconColor.Accent"/>.</summary>
+    public static uint? Rgb(IconColor color) => color switch
+    {
+        IconColor.Red => 0xFFE5484D,
+        IconColor.Orange => 0xFFF5832B,
+        IconColor.Yellow => 0xFFE5B800,
+        IconColor.Green => 0xFF2EB67D,
+        IconColor.Blue => 0xFF3B82F6,
+        IconColor.Purple => 0xFF9B6BF2,
+        _ => null,
+    };
+}
+
 /// <summary>One thing a setter does: give a setting a value.</summary>
 public sealed record SettingChange(string SettingId, SettingValue Value);
 
@@ -71,7 +120,7 @@ public sealed record Setter
 
     public StartMode Start { get; set; } = StartMode.Manual;
 
-    /// <summary>For automatic setters: false pauses watching. Manual setters ignore it.</summary>
+    /// <summary>False keeps the setter but stops it and stops anything starting it, whether manual or automatic.</summary>
     public bool Enabled { get; set; } = true;
 
     public ConditionMatch Match { get; set; } = ConditionMatch.All;
@@ -88,6 +137,12 @@ public sealed record Setter
     public bool ShowInFlyout { get; set; } = true;
 
     public bool ShowTrayIcon { get; set; }
+
+    /// <summary>How its tray icon looks while the setter runs.</summary>
+    public IconLook ActiveLook { get; set; } = IconLook.DefaultActive;
+
+    /// <summary>How its tray icon looks while the setter is off.</summary>
+    public IconLook InactiveLook { get; set; } = IconLook.DefaultInactive;
 
     /// <summary>What its tray icon draws to show the time left while it runs with a set end.</summary>
     public DurationIndicator Indicator { get; set; } = DurationIndicator.None;

@@ -199,6 +199,38 @@ public sealed class StorageAndTextTests
     }
 
     [TestMethod]
+    public void TrayIcon_DimAndBarAreIndependent()
+    {
+        int size = 24;
+        int glyph = SetterIcon.GlyphSize(size);
+        byte[] coverage = Enumerable.Repeat((byte)255, glyph * glyph).ToArray();
+
+        uint[] brightNoBar = SetterIcon.Compose(coverage, size, 0xFFE5484D, dim: false, bar: false, DurationIndicator.None, 0);
+        uint[] dimBar = SetterIcon.Compose(coverage, size, 0xFFE5484D, dim: true, bar: true, DurationIndicator.None, 0);
+
+        Assert.AreEqual(0xFFE5484Du, brightNoBar[size / 2], "full-strength color");
+        Assert.AreEqual(0u, brightNoBar[((size - 1) * size) + (size / 2)], "no bar");
+        Assert.AreEqual(0xFFE5484Du, dimBar[((size - 1) * size) + (size / 2)], "bar while dimmed");
+        Assert.AreEqual(0x00E5484Du, dimBar[size / 2] & 0x00FFFFFF);
+        Assert.IsTrue(dimBar[size / 2] >> 24 < 255);
+    }
+
+    [TestMethod]
+    public void IconLooks_SurviveSavingAndOldFilesGetDefaults()
+    {
+        Setter setter = Setter.Create("Looks", 100) with
+        {
+            InactiveLook = new IconLook { Color = IconColor.Blue, Glyph = Glyphs.Moon, Dim = false },
+        };
+        Setter back = SetterJson.ReadSetters(SetterJson.WriteSetters([setter]))[0];
+        Assert.AreEqual(setter.InactiveLook, back.InactiveLook);
+
+        Setter old = SetterJson.ReadSetters("""{"version":1,"setters":[{"id":"a"}]}""")[0];
+        Assert.IsTrue(old.ActiveLook.Bar && !old.ActiveLook.Dim);
+        Assert.IsTrue(old.InactiveLook.Dim && !old.InactiveLook.Bar);
+    }
+
+    [TestMethod]
     public void RunEnd_IsTheSoonestClockStop()
     {
         CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
