@@ -11,9 +11,11 @@ This is a tray-only WinUI 3 app built from the `winui-tray-app` skill scaffold o
 - Put pure decision logic in `SetSett.Core` (net10.0, no WinRT), covered by `SetSett.Tests` (MSTest). Run `dotnet test SetSett.Tests\SetSett.Tests.csproj`.
 - The repo is MIT licensed (`LICENSE`). Keep `README.md` in step with features.
 
-## Store package identity
+## Package identity: Store and GitHub
 
-Set Sett ships through the Microsoft Store. `Identity/@Name` is the GUID `winapp new` generated, and `mp:PhoneIdentity` keeps that GUID, as in Trdo. Don't change either by hand: "Associate App with the Store" replaces Name and Publisher with the Partner Center reservation. `build-msix-for-gh.ps1` came with the scaffold and isn't the release path.
+Set Sett ships through the Microsoft Store and as GitHub releases. `Identity/@Name` is the GUID `winapp new` generated, and `mp:PhoneIdentity` keeps that GUID, as in Trdo. Don't change either by hand: "Associate App with the Store" replaces Name and Publisher with the Partner Center reservation.
+
+GitHub releases come from `build-msix-for-gh.ps1` (the winui-tray-app skill's copy; never edit it here). They carry the identity in `SetSett.csproj` (`GitHubIdentityName`, `GitHubIdentityPublisher`, `GitHubPublisherDisplayName`): the generated GUID and the publisher from `D:\package-details.txt`, like the other Tray Land apps. The script swaps those values into the manifest for the release build and restores it afterwards, so the committed manifest keeps the Store identity. Never change them after the first GitHub release, because installed copies only update to the same identity. A Store install and a GitHub install are separate apps.
 
 ## How Set Sett works
 

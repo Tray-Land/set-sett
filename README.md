@@ -69,6 +69,8 @@ winapp run --clean                          # same, starting from a clean first 
 dotnet test SetSett.Tests\SetSett.Tests.csproj
 ```
 
+GitHub releases come from `.\build-msix-for-gh.ps1`, run in a pwsh session that has the `sign-msix` signing function. It builds a signed x64 + ARM64 `.msixbundle` and an auto-updating `SetSett.appinstaller` feed, and saves them as a draft release. The packages use the GitHub identity in `SetSett.csproj`, not the Store's. After publishing the draft without changing its tag, run `.\build-msix-for-gh.ps1 -VerifyPublished`. To check the build without signing, run `.\build-msix-for-gh.ps1 -SkipRelease -NoSign`.
+
 The solution has three projects:
 
 - `SetSett.csproj`: the WinUI 3 tray app. Settings in `Settings\`, sensors in `Sensing\`, the host and tray icons in `Services\`, the UI in `Views\`, and custom controls (the time-of-day dial and week view) in `Controls\`.
