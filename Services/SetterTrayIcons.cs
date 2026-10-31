@@ -38,6 +38,8 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
 
         public string Key { get; set; } = "";
 
+        public string Tooltip { get; set; } = "";
+
         // The glyph's ink, kept so an indicator's redraws don't render the glyph again.
         public string CoverageKey { get; set; } = "";
 
@@ -112,7 +114,13 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
             }
 
             string tooltip = $"{Name(setter)}\n{SetterText.Status(setter, SetterHost.Run, SetterHost.Snapshot)}";
-            slot.Icon.Tooltip = tooltip.Length > MaxTooltipLength ? tooltip[..MaxTooltipLength] : tooltip;
+            tooltip = tooltip.Length > MaxTooltipLength ? tooltip[..MaxTooltipLength] : tooltip;
+            if (tooltip != slot.Tooltip)
+            {
+                // Each assignment is a shell call; skip it when nothing changed.
+                slot.Icon.Tooltip = tooltip;
+                slot.Tooltip = tooltip;
+            }
         }
 
         ScheduleRedraw(nextRedraw);
