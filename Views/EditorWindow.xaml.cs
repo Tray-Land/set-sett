@@ -18,6 +18,7 @@ public sealed partial class EditorWindow : WindowEx
 {
     private bool _suppressSelection;
     private string? _editingId;
+    private SettingsView? _settingsView;
 
     public EditorWindow()
     {
@@ -34,6 +35,7 @@ public sealed partial class EditorWindow : WindowEx
         BuildNewMenu();
         SetterHost.SetEditorOpen(true);
         SetterHost.Changed += OnSettersChanged;
+        Activated += (_, _) => _settingsView?.Refresh();
         Closed += (_, _) =>
         {
             SetterHost.Changed -= OnSettersChanged;
@@ -183,8 +185,22 @@ public sealed partial class EditorWindow : WindowEx
         }
     }
 
+    /// <summary>Shows the app settings in place of a setter's editor.</summary>
+    public void ShowSettings()
+    {
+        _suppressSelection = true;
+        SetterList.SelectedIndex = -1;
+        _suppressSelection = false;
+        _editingId = null;
+        _settingsView = new SettingsView();
+        EditorHost.Child = new Grid { Padding = new Thickness(24, 16, 20, 0), Children = { _settingsView } };
+    }
+
+    private void SettingsLink_Click(object sender, RoutedEventArgs e) => ShowSettings();
+
     private void ShowEditor(Setter? setter)
     {
+        _settingsView = null;
         _editingId = setter?.Id;
         EditorHost.Child = setter is null
             ? NothingSelected

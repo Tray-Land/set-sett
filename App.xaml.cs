@@ -38,7 +38,6 @@ public partial class App : Application
     private TrayIcon? _trayIcon;
     private SetterTrayIcons? _setterIcons;
     private TrayFlyoutWindow? _flyout;
-    private SettingsWindow? _settings;
     private EditorWindow? _editor;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
@@ -144,23 +143,24 @@ public partial class App : Application
 
     public void ShowSettings()
     {
-        _flyout?.HidePopup();
-        if (_settings is null)
-        {
-            _settings = new SettingsWindow();
-            _settings.Closed += (_, _) =>
-            {
-                _settings = null;
-                ReleaseIdleResourcesIfNoWindows();
-            };
-        }
-
-        _settings.Activate();
-        _settings.BringToFront();
+        OpenEditor().ShowSettings();
     }
 
     /// <summary>Opens the create-and-edit window on a setter, a new blank setter, or the first one.</summary>
     public void ShowEditor(string? setterId = null, bool createNew = false)
+    {
+        EditorWindow editor = OpenEditor();
+        if (createNew)
+        {
+            editor.CreateNew();
+        }
+        else
+        {
+            editor.Select(setterId);
+        }
+    }
+
+    private EditorWindow OpenEditor()
     {
         _flyout?.HidePopup();
         if (_editor is null)
@@ -173,17 +173,9 @@ public partial class App : Application
             };
         }
 
-        if (createNew)
-        {
-            _editor.CreateNew();
-        }
-        else
-        {
-            _editor.Select(setterId);
-        }
-
         _editor.Activate();
         _editor.BringToFront();
+        return _editor;
     }
 
     private void InitializeTrayIcon()
@@ -224,7 +216,7 @@ public partial class App : Application
         menu.Items.Add(open);
 
         // Quick toggles for click-to-start setters, current state each time the menu opens.
-        Setter[] manual = [.. SetterHost.Setters.Where(s => !s.IsAutomatic && s.CanRun).Take(MaxMenuSetters)];
+        Setter[] manual = [.. SetterHost.Setters.Where(s => !s.IsAutomatic && s.CanRun && s.Enabled).Take(MaxMenuSetters)];
         if (manual.Length > 0)
         {
             menu.Items.Add(new MenuFlyoutSeparator());
@@ -275,7 +267,7 @@ public partial class App : Application
 
     private void ReleaseIdleResourcesIfNoWindows()
     {
-        if (_flyout is null && _settings is null && _editor is null && !_isExiting)
+        if (_flyout is null && _editor is null && !_isExiting)
         {
             MemoryService.ReleaseIdle();
         }
@@ -292,7 +284,6 @@ public partial class App : Application
 
         _isExiting = true;
         _flyout?.CloseWindow();
-        _settings?.Close();
         _editor?.Close();
 
         SetterHost.Changed -= OnSettersChanged;

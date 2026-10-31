@@ -19,6 +19,8 @@ namespace SetSett.Views;
 public sealed partial class FlyoutPage : Page, IDisposable
 {
     private bool _listening;
+    private readonly List<ProgressRing> _rings = [];
+    private DispatcherTimer? _ringTimer;
 
     public FlyoutPage()
     {
@@ -45,41 +47,73 @@ public sealed partial class FlyoutPage : Page, IDisposable
             SetterHost.Changed -= Render;
             _listening = false;
         }
+
+        StopRingTimer();
+        CloseSettings();
     }
 
     public void Dispose() => OnHidden();
 
     private void Render()
     {
-        IReadOnlyList<Setter> setters = [.. SetterHost.Setters.Where(s => s.ShowInFlyout)];
+        IReadOnlyList<Setter> setters = [.. SetterHost.Setters.Where(s => s.Enabled && s.ShowInFlyout)];
         RunState run = SetterHost.Run;
         SensorSnapshot now = SetterHost.Snapshot;
 
+        StopRingTimer();
         SetterList.Children.Clear();
         foreach (Setter setter in setters)
         {
-            SetterList.Children.Add(setter.IsAutomatic ? AutomaticCard(setter, run, now) : ManualCard(setter, run, now));
+            UIElement card = setter.IsAutomatic ? AutomaticCard(setter, run, now) : ManualCard(setter, run, now);
+            card.ContextFlyout = CardMenu(setter);
+            SetterList.Children.Add(card);
         }
 
-        EmptyState.Visibility = SetterHost.Setters.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        StartRingTimer();
+        EmptyState.Visibility = setters.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         ShowProblems();
+    }
+
+    /// <summary>Right-click menu: Edit, and Delete behind a submenu so one stray click can't lose a setter.</summary>
+    private MenuFlyout CardMenu(Setter setter)
+    {
+        var menu = new MenuFlyout();
+
+        var edit = new MenuFlyoutItem { Text = "Edit", Icon = new FontIcon { Glyph = "" } };
+        edit.Click += (_, _) => App.Current.ShowEditor(setter.Id);
+        menu.Items.Add(edit);
+
+        var toggle = new MenuFlyoutItem { Text = "Disable" };
+        toggle.Click += (_, _) => SetterHost.SetEnabled(setter.Id, false);
+        menu.Items.Add(toggle);
+
+        var delete = new MenuFlyoutSubItem { Text = "Delete", Icon = new FontIcon { Glyph = "" } };
+        var confirm = new MenuFlyoutItem { Text = "Delete this setter" };
+        confirm.Click += (_, _) =>
+        {
+            SetterHost.Remove(setter.Id);
+            Render();
+        };
+        delete.Items.Add(confirm);
+        menu.Items.Add(delete);
+        return menu;
     }
 
     private static string Label(Setter setter) => string.IsNullOrWhiteSpace(setter.Name) ? "Untitled setter" : setter.Name;
 
-    private static UIElement ManualCard(Setter setter, RunState run, SensorSnapshot now)
+    private UIElement ManualCard(Setter setter, RunState run, SensorSnapshot now)
     {
         bool on = run.IsActive(setter.Id);
         string status = SetterText.Status(setter, run, now);
         var button = new ToggleButton
         {
             IsChecked = on,
-            IsEnabled = setter.CanRun,
+            IsEnabled = setter.CanRun && (setter.Enabled || on),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             Padding = new Thickness(12, 10, 12, 10),
             CornerRadius = new CornerRadius(8),
-            Content = CardContent(setter, status, on),
+            Content = CardContent(setter, status, on, CountdownRing(setter, run, now)),
         };
         AutomationProperties.SetName(button, $"{Label(setter)}, {status}");
         ToolTipService.SetToolTip(button, SetterText.Changes(setter, SetterHost.Catalog));
@@ -87,7 +121,7 @@ public sealed partial class FlyoutPage : Page, IDisposable
         return button;
     }
 
-    private static UIElement AutomaticCard(Setter setter, RunState run, SensorSnapshot now)
+    private UIElement AutomaticCard(Setter setter, RunState run, SensorSnapshot now)
     {
         bool on = run.IsActive(setter.Id);
         string status = SetterText.Status(setter, run, now);
@@ -105,7 +139,7 @@ public sealed partial class FlyoutPage : Page, IDisposable
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         ToolTipService.SetToolTip(grid, SetterText.Changes(setter, SetterHost.Catalog));
 
-        var content = (FrameworkElement)CardContent(setter, status, on);
+        var content = (FrameworkElement)CardContent(setter, status, on, CountdownRing(setter, run, now));
         grid.Children.Add(content);
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Spacing = 4 };
@@ -135,14 +169,73 @@ public sealed partial class FlyoutPage : Page, IDisposable
         return grid;
     }
 
-    private static UIElement CardContent(Setter setter, string status, bool on)
+    /// <summary>A ring showing the share of the countdown left, or null when the run has no set end.</summary>
+    private ProgressRing? CountdownRing(Setter setter, RunState run, SensorSnapshot now)
+    {
+        if (run.RunOf(setter.Id) is not { } r || r.EndsAtUtc(setter, now) is not { } end)
+        {
+            return null;
+        }
+
+        var ring = new ProgressRing
+        {
+            Width = 20,
+            Height = 20,
+            Minimum = 0,
+            Maximum = 1,
+            IsIndeterminate = false,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = Brush("TextOnAccentFillColorPrimaryBrush"),
+            Background = Brush("TextOnAccentFillColorDisabledBrush"),
+            Tag = (r.ActiveSinceUtc, end),
+        };
+        AutomationProperties.SetName(ring, "Time left");
+        UpdateRing(ring);
+        _rings.Add(ring);
+        return ring;
+    }
+
+    private static void UpdateRing(ProgressRing ring)
+    {
+        var (start, end) = ((DateTime, DateTime))ring.Tag;
+        double total = (end - start).TotalSeconds;
+        ring.Value = total <= 0 ? 0 : Math.Clamp((end - DateTime.UtcNow).TotalSeconds / total, 0, 1);
+    }
+
+    private void StartRingTimer()
+    {
+        if (_rings.Count == 0 || _ringTimer is not null)
+        {
+            return;
+        }
+
+        _ringTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _ringTimer.Tick += (_, _) => _rings.ForEach(UpdateRing);
+        _ringTimer.Start();
+    }
+
+    private void StopRingTimer()
+    {
+        _ringTimer?.Stop();
+        _ringTimer = null;
+        _rings.Clear();
+    }
+
+    private static UIElement CardContent(Setter setter, string status, bool on, ProgressRing? ring = null)
     {
         var grid = new Grid { ColumnSpacing = 12 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var icon = new FontIcon { FontSize = 20, VerticalAlignment = VerticalAlignment.Center }.Set(setter.Glyph);
         grid.Children.Add(icon);
+
+        if (ring is not null)
+        {
+            Grid.SetColumn(ring, 2);
+            grid.Children.Add(ring);
+        }
 
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         text.Children.Add(new TextBlock { Text = Label(setter), TextTrimming = TextTrimming.CharacterEllipsis });
@@ -194,5 +287,19 @@ public sealed partial class FlyoutPage : Page, IDisposable
 
     private void EditButton_Click(object sender, RoutedEventArgs e) => App.Current.ShowEditor();
 
-    private void SettingsButton_Click(object sender, RoutedEventArgs e) => App.Current.ShowSettings();
+    private void SettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsHost.Content = new SettingsView();
+        MainPanel.Visibility = Visibility.Collapsed;
+        SettingsPanel.Visibility = Visibility.Visible;
+    }
+
+    private void BackButton_Click(object sender, RoutedEventArgs e) => CloseSettings();
+
+    private void CloseSettings()
+    {
+        SettingsHost.Content = null;
+        SettingsPanel.Visibility = Visibility.Collapsed;
+        MainPanel.Visibility = Visibility.Visible;
+    }
 }

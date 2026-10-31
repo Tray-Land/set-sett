@@ -1,38 +1,35 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using SetSett.Services;
 using Windows.ApplicationModel;
-using WinUIEx;
 
 namespace SetSett.Views;
 
-public sealed partial class SettingsWindow : WindowEx
+/// <summary>
+/// The app's settings: start with Windows, the place used for sun times, and the version. Hosted as
+/// a page in the flyout and as a footer-linked page in the editor window.
+/// </summary>
+public sealed partial class SettingsView : UserControl
 {
     private bool _loading = true;
 
-    public SettingsWindow()
+    public SettingsView()
     {
         InitializeComponent();
-        Title = $"{App.DisplayName} Settings";
-        AppTitleBar.Title = Title;
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(AppTitleBar);
-        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
-        WindowPlacementService.CenterOnPrimary(this, 520, 680);
-
         VersionText.Text = $"{App.DisplayName} {GetVersion()}";
         _ = LoadStartupStateAsync();
 
         var picker = new LocationPicker();
-        picker.Changed += ShowLocationAccess;
+        picker.Changed += Refresh;
         LocationHost.Content = picker;
-        ShowLocationAccess();
-        Activated += (_, _) => ShowLocationAccess();
-        Closed += (_, _) => PlaceService.ReleaseCities();
+        Refresh();
+        Unloaded += (_, _) => PlaceService.ReleaseCities();
         _loading = false;
     }
 
-    // Place conditions appear in the editor once Windows allows location; they're never required.
-    private void ShowLocationAccess() => LocationAccessText.Text = PlaceService.LocationAllowed
+    /// <summary>Re-reads whether Windows allows location (the user may have just changed it).</summary>
+    public void Refresh() => LocationAccessText.Text = PlaceService.LocationAllowed
+        // Place conditions appear in the editor once Windows allows location; they're never required.
         ? "Location is on for Set Sett, so setters can also start or stop at a place."
         : "Location is off for Set Sett. Sun times still work from the city you pick. Turn location on to use places in setters.";
 

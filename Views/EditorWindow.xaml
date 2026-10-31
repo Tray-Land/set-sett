@@ -33,6 +33,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <DropDownButton
                     x:Name="NewButton"
@@ -52,6 +53,19 @@
                     AutomationProperties.Name="Setters"
                     SelectionChanged="SetterList_SelectionChanged"
                     SelectionMode="Single" />
+                <Button
+                    Grid.Row="2"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Left"
+                    AutomationProperties.Name="Settings"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Click="SettingsLink_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <FontIcon FontSize="16" Glyph="&#xE713;" />
+                        <TextBlock Text="Settings" />
+                    </StackPanel>
+                </Button>
             </Grid>
 
             <!--  Editor for the selected setter  -->
