@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The plain-.NET half of Set Sett: the setter model, the conditions, the engine that starts and
+    stops setters and puts settings back, sun times, the city list, and tray icon pixels. Nothing
+    here may depend on WinUI, WinRT, or Win32, so SetSett.Tests covers all of it on a plain test host.
+    The app supplies the Windows side through ISetting (one per setting) and the sensor snapshot.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>SetSett</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+</Project>
