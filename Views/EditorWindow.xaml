@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ex:WindowEx
+    x:Class="SetSett.Views.EditorWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ex="using:WinUIEx"
+    Title="Setters">
+
+    <ex:WindowEx.SystemBackdrop>
+        <MicaBackdrop />
+    </ex:WindowEx.SystemBackdrop>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TitleBar x:Name="AppTitleBar" Title="Setters">
+            <TitleBar.IconSource>
+                <ImageIconSource ImageSource="ms-appx:///Assets/StoreLogo.png" />
+            </TitleBar.IconSource>
+        </TitleBar>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="280" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!--  Setter list  -->
+            <Grid Padding="12,4,8,12" RowSpacing="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <DropDownButton
+                    x:Name="NewButton"
+                    HorizontalAlignment="Stretch"
+                    AutomationProperties.Name="New setter">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon FontSize="14" Glyph="&#xE710;" />
+                        <TextBlock Text="New setter" />
+                    </StackPanel>
+                    <DropDownButton.Flyout>
+                        <MenuFlyout x:Name="NewMenu" Placement="BottomEdgeAlignedLeft" />
+                    </DropDownButton.Flyout>
+                </DropDownButton>
+                <ListView
+                    x:Name="SetterList"
+                    Grid.Row="1"
+                    AutomationProperties.Name="Setters"
+                    SelectionChanged="SetterList_SelectionChanged"
+                    SelectionMode="Single" />
+            </Grid>
+
+            <!--  Editor for the selected setter  -->
+            <Border
+                x:Name="EditorHost"
+                Grid.Column="1"
+                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1,1,0,0"
+                CornerRadius="8,0,0,0">
+                <TextBlock
+                    x:Name="NothingSelected"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="Pick a setter, or create a new one." />
+            </Border>
+        </Grid>
+    </Grid>
+</ex:WindowEx>
