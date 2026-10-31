@@ -62,18 +62,10 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
             return rgb;
         }
 
-        if (color == IconColor.Accent)
+        // Cached by SystemThemeService, which redraws the icons when the accent changes.
+        if (color == IconColor.Accent && SystemThemeService.Accent is { } accent)
         {
-            try
-            {
-                Windows.UI.Color accent = new Windows.UI.ViewManagement.UISettings()
-                    .GetColorValue(Windows.UI.ViewManagement.UIColorType.Accent);
-                return 0xFF000000 | ((uint)accent.R << 16) | ((uint)accent.G << 8) | accent.B;
-            }
-            catch
-            {
-                // Fall through to the taskbar color.
-            }
+            return accent;
         }
 
         return Color;

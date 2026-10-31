@@ -190,7 +190,12 @@ public partial class App : Application
             _trayIcon?.SetIcon(TrayIconPath);
             _setterIcons?.Redraw();
         });
+        SystemThemeService.AccentChanged += OnAccentChanged;
     }
+
+    // Raised on a background thread; icons that draw in the accent color redraw on the UI thread.
+    private void OnAccentChanged(object? sender, EventArgs e) =>
+        _dispatcher?.TryEnqueue(() => _setterIcons?.Redraw());
 
     private void OnSettersChanged()
     {
@@ -287,6 +292,7 @@ public partial class App : Application
         _editor?.Close();
 
         SetterHost.Changed -= OnSettersChanged;
+        SystemThemeService.AccentChanged -= OnAccentChanged;
         await SetterHost.ShutdownAsync();
 
         _setterIcons?.Dispose();
