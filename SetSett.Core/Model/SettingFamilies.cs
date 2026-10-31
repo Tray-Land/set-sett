@@ -69,7 +69,8 @@ public static class SettingFamilies
             return [];
         }
 
-        HashSet<string> taken = [.. changes.Where((_, i) => !line.Indexes.Contains(i)).Select(c => c.SettingId)];
+        // Ids compare ignoring case, like Lines and SettingCatalog.Find, so a saved id in another case counts as used.
+        HashSet<string> taken = new(changes.Where((_, i) => !line.Indexes.Contains(i)).Select(c => c.SettingId), StringComparer.OrdinalIgnoreCase);
         return [.. Members(catalog, line.Family).Where(m => !taken.Contains(m))];
     }
 
@@ -114,7 +115,7 @@ public static class SettingFamilies
             return [.. changes, new SettingChange(info.Id, info.DefaultValue)];
         }
 
-        HashSet<string> taken = [.. changes.Select(c => c.SettingId)];
+        HashSet<string> taken = new(changes.Select(c => c.SettingId), StringComparer.OrdinalIgnoreCase);
         return
         [
             .. changes,
@@ -125,7 +126,7 @@ public static class SettingFamilies
     /// <summary>True when a family still has a member the setter doesn't change, so the menu can offer it.</summary>
     public static bool HasFreeMember(IReadOnlyList<SettingChange> changes, ISettingCatalog catalog, string family)
     {
-        HashSet<string> taken = [.. changes.Select(c => c.SettingId)];
+        HashSet<string> taken = new(changes.Select(c => c.SettingId), StringComparer.OrdinalIgnoreCase);
         return Members(catalog, family).Any(m => !taken.Contains(m));
     }
 }

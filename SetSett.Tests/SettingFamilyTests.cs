@@ -112,6 +112,24 @@ public sealed class SettingFamilyTests
     }
 
     [TestMethod]
+    public void MemberIdInAnotherCase_CountsAsUsed()
+    {
+        var (catalog, ac, _) = Catalog();
+        SettingChange[] changes = [new(SettingIds.ScreenOffPluggedIn.ToUpperInvariant(), new NumberValue(0))];
+
+        Assert.IsTrue(SettingFamilies.HasFreeMember(changes, catalog, Screen));
+        CollectionAssert.AreEqual(new[] { SettingIds.ScreenOffOnBattery }, SettingFamilies.Add(changes, catalog, ac).Skip(1).Select(c => c.SettingId).ToArray());
+
+        SettingChange[] both = [.. changes, Dc(0)];
+        Assert.IsFalse(SettingFamilies.HasFreeMember(both, catalog, Screen));
+
+        // The battery line's own free members exclude plugged in, which the other line uses in upper case.
+        SettingChange[] split = [changes[0], Dc(300)];
+        ChangeLine battery = SettingFamilies.Lines(split, catalog)[1];
+        CollectionAssert.AreEqual(new[] { SettingIds.ScreenOffOnBattery }, SettingFamilies.FreeMembers(split, catalog, battery).ToArray());
+    }
+
+    [TestMethod]
     public void Revalue_ChangesEveryChangeOnTheLine()
     {
         var (catalog, _, _) = Catalog();
