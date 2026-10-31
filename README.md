@@ -13,6 +13,7 @@ You build **setters**. A setter is:
 - **When it stops**: when you click it again, when its conditions end, or after any stop condition you add.
 - **Afterwards**: whether to put each setting back to what it was before it started.
 - **Where it shows**: a button in the flyout and, optionally, its own tray icon, which can show the time left in a timed run as a donut or a horizontal or vertical bar. You choose how the icon looks when the setter is on and when it's off: a different icon, a color, dimmed or not, and the small "on" bar.
+- **Enabled**: switch a setter off to keep it without it running. A disabled setter stops if it's on, and nothing starts it. It leaves the flyout and the tray, and the editor's list shows it dimmed until you switch it back on.
 
 | Settings it can change | |
 |---|---|
@@ -35,7 +36,9 @@ You build **setters**. A setter is:
 
 **Crashes and restarts.** If Set Sett closes unexpectedly, it picks up where it left off the next time it starts. It puts back settings whose timers ran out while it was closed, and leaves alone any setting you changed yourself. "Quit" puts everything back first.
 
-**The tray.** Click the Set Sett icon for the flyout. Right-click it to toggle click-to-start setters, open the setter editor, open Settings, or quit. A setter's own tray icon is its glyph: full with a bar underneath while it's on, faded while it's off. Click it to start or stop the setter. If it stops at a set time ("After a while", "At a time", or a length picked from its menu), its icon can show how much of the run is left instead: a donut around the glyph, or a bar under or beside it, that empties as time goes by. If the setter is click-to-start and stops after a while, right-clicking its icon also offers other lengths ("Start for 2 hr"), 15 min to 8 hr unless you pick your own in the editor. While it's on, the same menu makes it stop that long from now ("Stop in 30 min").
+**The flyout.** Each enabled setter is a button. A click-to-start setter is a toggle. An automatic one says what it's waiting for, and offers "Stop for now" while it's on. A run with a set end shows a ring with the time left. Right-click a button to edit, disable or delete its setter.
+
+**The tray.** Click the Set Sett icon for the flyout. Right-click it to toggle click-to-start setters, open the setter editor, open Settings, or quit. A setter's own tray icon is its glyph: full with a bar underneath while it's on, faded while it's off. Click it to start or stop the setter. If it stops at a set time ("After a while", "At a time", or a length picked from its menu), its icon can show how much of the run is left instead: a donut around the glyph, or a bar under or beside it, that empties as time goes by. If the setter is click-to-start and stops after a while, right-clicking its icon also offers other lengths ("Start for 2 hr"), 15 min to 8 hr unless you pick your own in the editor. While it's on, the same menu makes it stop that long from now ("Stop in 30 min"). The menu can also disable the setter or open it in the editor.
 
 **Creating and editing.** Setters are built in their own window ("New setter" in the flyout or the tray menu), starting blank or from a template: *Keep awake while rendering*, *Dark mode at night*, *Screen stays on for an hour*, *Quiet hours*.
 

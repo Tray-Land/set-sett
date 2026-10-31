@@ -40,6 +40,8 @@ internal sealed partial class SetterEditor : UserControl
     private readonly DispatcherQueueTimer _sliderTimer;
     private readonly string _radioGroup = Guid.NewGuid().ToString("N");
     private Action? _pendingSlider;
+    private ToggleSwitch? _enabledToggle;
+    private bool _syncing;
     private Setter _setter;
 
     public SetterEditor(Setter setter, Action onDeleted)
@@ -50,7 +52,16 @@ internal sealed partial class SetterEditor : UserControl
         _sliderTimer.Interval = SliderSettle;
         _sliderTimer.IsRepeating = false;
         _sliderTimer.Tick += (_, _) => FlushSlider();
-        Unloaded += (_, _) => FlushSlider();
+        Loaded += (_, _) =>
+        {
+            SetterHost.Changed -= OnHostChanged;
+            SetterHost.Changed += OnHostChanged;
+        };
+        Unloaded += (_, _) =>
+        {
+            SetterHost.Changed -= OnHostChanged;
+            FlushSlider();
+        };
 
         var root = new StackPanel { Padding = new Thickness(32, 20, 32, 32), Spacing = 4, MaxWidth = 820, HorizontalAlignment = HorizontalAlignment.Stretch };
         root.Children.Add(Header());
@@ -72,6 +83,22 @@ internal sealed partial class SetterEditor : UserControl
         BuildStart();
         BuildStop();
         ShowTrayIconDetails();
+    }
+
+    // Enabled is the only field changed outside the editor (flyout card menu, tray icon menu). Take just that
+    // from the stored setter, so a stale copy can't re-enable it and nothing the user is typing is rebuilt.
+    private void OnHostChanged()
+    {
+        if (SetterHost.Find(_setter.Id) is { } stored && stored.Enabled != _setter.Enabled)
+        {
+            _setter = _setter with { Enabled = stored.Enabled };
+            if (_enabledToggle is not null)
+            {
+                _syncing = true;
+                _enabledToggle.IsOn = stored.Enabled;
+                _syncing = false;
+            }
+        }
     }
 
     private void Commit(Setter updated)
@@ -143,9 +170,15 @@ internal sealed partial class SetterEditor : UserControl
 
     private UIElement EnabledCard()
     {
-        var toggle = new ToggleSwitch { IsOn = _setter.Enabled, OnContent = "", OffContent = "", MinWidth = 0 };
+        var toggle = _enabledToggle = new ToggleSwitch { IsOn = _setter.Enabled, OnContent = "", OffContent = "", MinWidth = 0 };
         AutomationProperties.SetName(toggle, "Enabled");
-        toggle.Toggled += (_, _) => Commit(_setter with { Enabled = toggle.IsOn });
+        toggle.Toggled += (_, _) =>
+        {
+            if (!_syncing)
+            {
+                Commit(_setter with { Enabled = toggle.IsOn });
+            }
+        };
         return Row("", "Enabled",
             Caption("Turn off to keep this setter without it running. It stops if it's on, and nothing starts it until you turn it back on."),
             toggle, remove: null);

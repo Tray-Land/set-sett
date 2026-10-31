@@ -87,6 +87,25 @@
                         Content="Create a setter"
                         Style="{StaticResource AccentButtonStyle}" />
                 </StackPanel>
+
+                <!--  Setters exist but none is shown: disabled, or hidden from the flyout  -->
+                <StackPanel
+                    x:Name="NoneShownState"
+                    Margin="0,48,0,0"
+                    HorizontalAlignment="Center"
+                    Spacing="12"
+                    Visibility="Collapsed">
+                    <TextBlock
+                        MaxWidth="260"
+                        HorizontalTextAlignment="Center"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Your setters are disabled or hidden from this flyout."
+                        TextWrapping="Wrap" />
+                    <Button
+                        HorizontalAlignment="Center"
+                        Click="EditButton_Click"
+                        Content="Open the editor" />
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </Grid>

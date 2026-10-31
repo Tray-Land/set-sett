@@ -128,16 +128,25 @@ public sealed partial class EditorWindow : WindowEx
     {
         string name = string.IsNullOrWhiteSpace(setter.Name) ? "Untitled setter" : setter.Name;
         string summary = setter.IsAutomatic ? "Automatic: " + SetterText.When(setter) : "On click";
+
+        // A disabled setter has no flyout button or tray icon, so this list is where it shows as off.
+        double opacity = setter.Enabled ? 1 : 0.55;
+        if (!setter.Enabled)
+        {
+            summary = "Disabled. " + summary;
+        }
+
         if (item.Content is Grid grid && grid.Children.Count == 2 &&
             grid.Children[0] is FontIcon icon && grid.Children[1] is StackPanel text)
         {
+            grid.Opacity = opacity;
             icon.Set(setter.Glyph);
             ((TextBlock)text.Children[0]).Text = name;
             ((TextBlock)text.Children[1]).Text = summary;
         }
         else
         {
-            var layout = new Grid { ColumnSpacing = 12, Padding = new Thickness(0, 6, 0, 6) };
+            var layout = new Grid { ColumnSpacing = 12, Padding = new Thickness(0, 6, 0, 6), Opacity = opacity };
             layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             layout.Children.Add(new FontIcon { FontSize = 18, VerticalAlignment = VerticalAlignment.Center }.Set(setter.Glyph));

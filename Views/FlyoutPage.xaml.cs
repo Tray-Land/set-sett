@@ -13,8 +13,8 @@ namespace SetSett.Views;
 
 /// <summary>
 /// The flyout: one button per setter. A manual setter is a toggle (accent while on, like a Quick
-/// Settings tile); an automatic one shows what it's waiting for, a pause switch, and "Stop for now"
-/// while it's on. Listens to <see cref="SetterHost.Changed"/> only while visible.
+/// Settings tile); an automatic one shows what it's waiting for and "Stop for now"
+/// while it's on. Disabled setters aren't listed. Listens to <see cref="SetterHost.Changed"/> only while visible.
 /// </summary>
 public sealed partial class FlyoutPage : Page, IDisposable
 {
@@ -70,7 +70,9 @@ public sealed partial class FlyoutPage : Page, IDisposable
         }
 
         StartRingTimer();
-        EmptyState.Visibility = setters.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        bool noSetters = SetterHost.Setters.Count == 0;
+        EmptyState.Visibility = setters.Count == 0 && noSetters ? Visibility.Visible : Visibility.Collapsed;
+        NoneShownState.Visibility = setters.Count == 0 && !noSetters ? Visibility.Visible : Visibility.Collapsed;
         ShowProblems();
     }
 
@@ -108,7 +110,7 @@ public sealed partial class FlyoutPage : Page, IDisposable
         var button = new ToggleButton
         {
             IsChecked = on,
-            IsEnabled = setter.CanRun && (setter.Enabled || on),
+            IsEnabled = setter.CanRun,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             Padding = new Thickness(12, 10, 12, 10),
@@ -151,18 +153,8 @@ public sealed partial class FlyoutPage : Page, IDisposable
             actions.Children.Add(stop);
         }
 
-        var enabled = new ToggleSwitch
-        {
-            IsOn = setter.Enabled,
-            OnContent = "",
-            OffContent = "",
-            MinWidth = 0,
-            IsEnabled = setter.CanRun,
-        };
-        AutomationProperties.SetName(enabled, $"{Label(setter)} automatic");
-        enabled.Toggled += (_, _) => SetterHost.SetEnabled(setter.Id, enabled.IsOn);
-        actions.Children.Add(enabled);
-
+        // No on/off switch: only enabled setters are listed, so turning it off would make the card
+        // vanish. Disable is in the card's right-click menu.
         Grid.SetColumn(actions, 1);
         grid.Children.Add(actions);
         AutomationProperties.SetName(grid, $"{Label(setter)}, {status}");

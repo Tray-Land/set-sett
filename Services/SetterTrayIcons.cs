@@ -221,7 +221,7 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
             {
                 Text = on ? "Stop" : "Start",
                 Icon = new FontIcon { Glyph = on ? "" : "" },
-                IsEnabled = setter.CanRun && (setter.Enabled || on),
+                IsEnabled = setter.CanRun,
             };
             toggle.Click += (_, _) => _ = SetterHost.ToggleAsync(setterId);
             menu.Items.Add(toggle);
@@ -238,15 +238,10 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
             AddTimerChoices(menu, setter, on);
         }
 
-        {
-            var pause = new MenuFlyoutItem
-            {
-                Text = setter.Enabled ? "Disable" : "Enable",
-                Icon = new FontIcon { Glyph = setter.Enabled ? "" : "" },
-            };
-            pause.Click += (_, _) => SetterHost.SetEnabled(setterId, !setter.Enabled);
-            menu.Items.Add(pause);
-        }
+        // Only enabled setters have an icon (Sync), so this is always Disable.
+        var pause = new MenuFlyoutItem { Text = "Disable", Icon = new FontIcon { Glyph = "" } };
+        pause.Click += (_, _) => SetterHost.SetEnabled(setterId, false);
+        menu.Items.Add(pause);
 
         var edit = new MenuFlyoutItem { Text = "Edit setter", Icon = new FontIcon { Glyph = "" } };
         edit.Click += (_, _) => editSetter(setterId);
@@ -280,7 +275,7 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
             }
 
             string length = SetterText.Minutes(minutes);
-            var item = new MenuFlyoutItem { Text = on ? $"Stop in {length}" : $"Start for {length}", IsEnabled = setter.CanRun && (setter.Enabled || on) };
+            var item = new MenuFlyoutItem { Text = on ? $"Stop in {length}" : $"Start for {length}", IsEnabled = setter.CanRun };
             item.Click += (_, _) => _ = SetterHost.StartForAsync(setter.Id, TimeSpan.FromMinutes(minutes));
             items.Add(item);
         }
