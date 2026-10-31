@@ -111,7 +111,7 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
 
     private async Task StartAsync(Setter setter, SetterRun run)
     {
-        if (!setter.CanRun || State.IsActive(setter.Id))
+        if (!setter.CanRun || !setter.Enabled || State.IsActive(setter.Id))
         {
             return;
         }

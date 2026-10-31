@@ -107,7 +107,7 @@ public static class SetterPolicy
                 {
                     transitions.Add(new(setter.Id, false, StopReason.Edited));
                 }
-                else if (setter.IsAutomatic && !setter.Enabled)
+                else if (!setter.Enabled)
                 {
                     transitions.Add(new(setter.Id, false, StopReason.Disabled));
                 }

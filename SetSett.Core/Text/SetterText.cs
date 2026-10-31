@@ -147,13 +147,13 @@ public static class SetterText
             return "On " + RunningUntil(setter, run, now);
         }
 
+        if (!setter.Enabled)
+        {
+            return "Disabled";
+        }
+
         if (setter.IsAutomatic)
         {
-            if (!setter.Enabled)
-            {
-                return "Paused";
-            }
-
             return state.IsLatched(setter.Id)
                 ? "Stopped until its conditions reset"
                 : "Starts " + When(setter);

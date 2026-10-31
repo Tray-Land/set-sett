@@ -72,6 +72,17 @@ public sealed class SetterPolicyTests
     }
 
     [TestMethod]
+    public void DisabledManualSetter_IsStopped()
+    {
+        SensorSnapshot now = At.Local(2026, 10, 31, 9);
+        Setter manual = WhileOn("Office") with { Start = StartMode.Manual, Enabled = false };
+        RunState running = RunState.Empty.WithRun(new SetterRun(manual.Id, now.UtcNow));
+        var (transitions, _) = SetterPolicy.Step([manual], running, now);
+        Assert.IsFalse(transitions.Single().Start);
+        Assert.AreEqual(StopReason.Disabled, transitions.Single().Reason);
+    }
+
+    [TestMethod]
     public void PausedOrHalfBuiltSetters_DoNotRun()
     {
         SensorSnapshot now = At.Local(2026, 10, 31, 9) with { Networks = ["Office"] };
