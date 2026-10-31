@@ -178,7 +178,14 @@ public sealed partial class FlyoutPage : Page, IDisposable
         var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Spacing = 4 };
         if (on)
         {
-            var stop = new Button { Content = "Stop for now", Padding = new Thickness(8, 4, 8, 4) };
+            // A link in the accent fill's own text color: a default button keeps its pale fill and
+            // light text, which vanish against a light accent.
+            var stop = new HyperlinkButton
+            {
+                Content = new TextBlock { Text = "Stop for now", TextDecorations = Windows.UI.Text.TextDecorations.Underline },
+                Padding = new Thickness(8, 4, 8, 4),
+            };
+            OnAccent(stop);
             AutomationProperties.SetName(stop, $"Stop {Label(setter)} for now");
             stop.Click += (_, _) => _ = SetterHost.ToggleAsync(setter.Id);
             actions.Children.Add(stop);
@@ -288,6 +295,16 @@ public sealed partial class FlyoutPage : Page, IDisposable
     }
 
     private static Brush Brush(string key) => (Brush)Application.Current.Resources[key];
+
+    // Lightweight styling for a link on an accent fill. Every state is set: the defaults for hover and
+    // press are accent-colored text, which would disappear on the accent.
+    private static void OnAccent(HyperlinkButton link)
+    {
+        link.Resources["HyperlinkButtonForeground"] = Brush("TextOnAccentFillColorPrimaryBrush");
+        link.Resources["HyperlinkButtonForegroundPointerOver"] = Brush("TextOnAccentFillColorPrimaryBrush");
+        link.Resources["HyperlinkButtonForegroundPressed"] = Brush("TextOnAccentFillColorSecondaryBrush");
+        link.Resources["HyperlinkButtonForegroundDisabled"] = Brush("TextOnAccentFillColorDisabledBrush");
+    }
 
     private void ShowProblems()
     {
