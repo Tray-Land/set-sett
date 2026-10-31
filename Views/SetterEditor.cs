@@ -536,7 +536,14 @@ internal sealed partial class SetterEditor : UserControl
             ActionButton = TaskbarSettingsLink(),
         };
         // Closing the note hides it for every setter, from now on.
-        note.Closed += (_, _) => SettingsService.HideTaskbarNote = true;
+        // Only the user's X counts: Closed also fires when the tray icon switch closes it in code.
+        note.Closed += (_, args) =>
+        {
+            if (args.Reason == InfoBarCloseReason.CloseButton)
+            {
+                SettingsService.HideTaskbarNote = true;
+            }
+        };
         var trayIcon = new ToggleSwitch { IsOn = _setter.ShowTrayIcon, OnContent = "", OffContent = "", MinWidth = 0 };
         AutomationProperties.SetName(trayIcon, "Give it its own tray icon");
         trayIcon.Toggled += (_, _) =>
