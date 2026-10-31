@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>SetSett.Tests</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MSTest" Version="4.4.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SetSett.Core\SetSett.Core.csproj" />
+    <!-- The real city list the app ships, so search and parsing are tested against it. -->
+    <None Include="..\Assets\Data\world_cities.csv" Link="Data\world_cities.csv" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

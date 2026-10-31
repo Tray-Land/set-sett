@@ -1,0 +1,278 @@
+using System.Globalization;
+using SetSett.Engine;
+using SetSett.Icons;
+using SetSett.Model;
+using SetSett.Places;
+using SetSett.Storage;
+using SetSett.Text;
+
+namespace SetSett.Tests;
+
+[TestClass]
+public sealed class StorageAndTextTests
+{
+    [TestMethod]
+    public void Setters_RoundTripEveryConditionKind()
+    {
+        Setter setter = Setter.Create("Everything", 101) with
+        {
+            Start = StartMode.Automatic,
+            Changes = [new SettingChange(SettingIds.Volume, new NumberValue(30)), new SettingChange(SettingIds.Mute, new OnOffValue(true))],
+            When =
+            [
+                new TimeWindowCondition(new TimeOnly(22, 0), new TimeOnly(6, 30), WeekDays.Weekdays),
+                new TimeWindowCondition(new TimeOnly(9, 0), new TimeOnly(17, 0), WeekDays.Every)
+                    .WithDay(DayOfWeek.Friday, true, new TimeOnly(9, 0), new TimeOnly(13, 0))
+                    .WithDay(DayOfWeek.Sunday, false, new TimeOnly(10, 0), new TimeOnly(14, 0)),
+                new SunCondition(SunPhase.Night) { SunsetOffsetMinutes = -15 },
+                new NetworkCondition("Office") { Not = true },
+                new DeviceCondition("Surface Headphones"),
+                new ProcessCondition("blender"),
+                new PowerCondition(PowerCheck.BatteryBelow, 30),
+                new PlaceCondition(new GeoPoint(43, -88), 250, "Home"),
+            ],
+            Until = [new ElapsedCondition(45), new ClockCondition(new TimeOnly(17, 0)), new CpuQuietCondition(10, 5)],
+            TimerChoices = [10, 90],
+            Indicator = DurationIndicator.VerticalBar,
+        };
+
+        Setter back = SetterJson.ReadSetters(SetterJson.WriteSetters([setter])).Single();
+
+        Assert.IsTrue(back.Changes.SequenceEqual(setter.Changes));
+        Assert.IsTrue(back.When.SequenceEqual(setter.When));
+        Assert.IsTrue(back.Until.SequenceEqual(setter.Until));
+        Assert.IsTrue(back.TimerChoices.SequenceEqual(setter.TimerChoices));
+        Assert.AreEqual(setter.TrayIconId, back.TrayIconId);
+        Assert.AreEqual(DurationIndicator.VerticalBar, back.Indicator);
+        Assert.IsFalse(back.RunsDifferentlyThan(setter));
+    }
+
+    [TestMethod]
+    public void RunState_RoundTrips()
+    {
+        RunState state = ClaimLedger.Apply(RunState.Empty, SettingIds.AppsTheme, "a", new ChoiceValue("light"), new ChoiceValue("dark"))
+            .WithRun(new SetterRun("a", new DateTime(2026, 10, 31, 17, 0, 0, DateTimeKind.Utc)))
+            .WithRun(new SetterRun("c", new DateTime(2026, 10, 31, 17, 0, 0, DateTimeKind.Utc))
+            {
+                TimerEndsUtc = new DateTime(2026, 10, 31, 19, 0, 0, DateTimeKind.Utc),
+            })
+            .WithLatch("b", true);
+
+        RunState back = SetterJson.ReadState(SetterJson.WriteState(state));
+
+        Assert.IsTrue(back.Active.SequenceEqual(state.Active));
+        Assert.IsNull(back.RunOf("a")!.TimerEndsUtc);
+        Assert.AreEqual("b", back.Latched.Single());
+        Assert.AreEqual(state.ClaimsOn(SettingIds.AppsTheme).Single(), back.ClaimsOn(SettingIds.AppsTheme).Single());
+    }
+
+    [TestMethod]
+    public void MissingProperties_KeepTheirDefaults()
+    {
+        Setter setter = SetterJson.ReadSetters("""
+            {"version": 1, "setters": [{"id": "x", "changes": [{"settingId": "mute", "value": {"type": "onOff", "on": true}}]}]}
+            """).Single();
+
+        Assert.IsTrue(setter.Enabled);
+        Assert.IsTrue(setter.PutBack);
+        Assert.IsTrue(setter.ShowInFlyout);
+        Assert.AreEqual(Setter.DefaultGlyph, setter.Glyph);
+        Assert.IsEmpty(setter.When);
+        Assert.IsEmpty(setter.Until);
+        Assert.IsTrue(setter.CanRun);
+        Assert.IsTrue(setter.TimerChoices.SequenceEqual(Setter.DefaultTimerChoices));
+
+        RunState state = SetterJson.ReadState("""{"version": 1, "state": {}}""");
+        Assert.IsEmpty(state.Active);
+        Assert.IsEmpty(state.Claims);
+    }
+
+    [TestMethod]
+    public void TimeWindow_WithoutPerDay_IsTheSameHoursEveryChosenDay()
+    {
+        Setter setter = SetterJson.ReadSetters("""
+            {"version": 1, "setters": [{"id": "x", "start": "Automatic",
+              "when": [{"kind": "time", "from": "22:00:00", "to": "07:00:00", "days": "Every"}]}]}
+            """).Single();
+
+        var window = (TimeWindowCondition)setter.When.Single();
+        Assert.IsNotNull(window.PerDay);
+        Assert.IsEmpty(window.PerDay);
+        Assert.IsTrue(window.IsSameEveryDay);
+    }
+
+    [TestMethod]
+    public void NewerFileVersion_IsRefused()
+    {
+        Assert.ThrowsExactly<NotSupportedException>(() => SetterJson.ReadSetters("""{"version": 99, "setters": []}"""));
+    }
+
+    [TestMethod]
+    public void Text_DescribesConditionsAndValues()
+    {
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+
+        Assert.AreEqual("for 1 hr 30 min", SetterText.Until(new ElapsedCondition(90)));
+        Assert.AreEqual("until blender closes", SetterText.Until(new ProcessCondition("blender") { Not = true }));
+        Assert.AreEqual("between 30 min before sunset and sunrise", SetterText.Condition(new SunCondition(SunPhase.Night) { SunsetOffsetMinutes = -30 }));
+        Assert.AreEqual("between 10:00 PM and 6:00 AM on weekdays", SetterText.Condition(new TimeWindowCondition(new TimeOnly(22, 0), new TimeOnly(6, 0), WeekDays.Weekdays)));
+        TimeWindowCondition week = new TimeWindowCondition(new TimeOnly(9, 0), new TimeOnly(17, 0), WeekDays.Weekdays | WeekDays.Saturday)
+            .WithDay(DayOfWeek.Saturday, true, new TimeOnly(10, 0), new TimeOnly(14, 0));
+        Assert.AreEqual("9:00 AM–5:00 PM on weekdays, 10:00 AM–2:00 PM on Sat", SetterText.Condition(week));
+        Assert.AreEqual("between 10:00 AM and 2:00 PM on Sat", SetterText.Condition(week with { Days = WeekDays.Saturday }), "one day on: its own hours");
+        Assert.AreEqual("Never", SetterText.Duration(0));
+        Assert.AreEqual("5 min", SetterText.Duration(300));
+    }
+
+    [TestMethod]
+    public void Status_ShowsWhenARunningTimerEnds()
+    {
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+        Setter setter = Setter.Create("Screen on", 100) with
+        {
+            Changes = [new SettingChange(SettingIds.ScreenOffPluggedIn, new NumberValue(0))],
+            Until = [new ElapsedCondition(60)],
+        };
+        SensorSnapshot now = At.Local(2026, 10, 31, 14, 40);
+        RunState running = RunState.Empty.WithRun(new SetterRun(setter.Id, now.UtcNow));
+
+        Assert.AreEqual("On until 3:40 PM", SetterText.Status(setter, running, now));
+        Assert.AreEqual("Off · runs for 1 hr", SetterText.Status(setter, RunState.Empty, now));
+
+        RunState forTwoHours = RunState.Empty.WithRun(new SetterRun(setter.Id, now.UtcNow) { TimerEndsUtc = now.UtcNow.AddHours(2) });
+        Assert.AreEqual("On until 4:40 PM", SetterText.Status(setter, forTwoHours, now), "a length picked from the tray menu");
+    }
+
+    [TestMethod]
+    public void TimerMenu_OnlyForClickToStartTimers_ShortestFirst()
+    {
+        Setter timer = Setter.Create("Awake", 100) with
+        {
+            Changes = [new SettingChange(SettingIds.Mute, new OnOffValue(true))],
+            Until = [new ElapsedCondition(45)],
+            TimerChoices = [120, 15, 0, 15, 2000, 60],
+        };
+
+        Assert.IsTrue(timer.HasTimer);
+        Assert.AreEqual(45, timer.TimerMinutes);
+        CollectionAssert.AreEqual(new[] { 15, 60, 120 }, timer.TimerMenu.ToArray());
+        Assert.IsFalse((timer with { Start = StartMode.Automatic }).HasTimer, "an automatic setter starts on its conditions");
+        Assert.IsFalse((timer with { Until = [new ClockCondition(new TimeOnly(17, 0))] }).HasTimer);
+    }
+
+    [TestMethod]
+    public void Templates_AreRunnable()
+    {
+        foreach (SetterTemplates.Template template in SetterTemplates.All)
+        {
+            Assert.IsTrue(template.Create(100).CanRun, template.Name);
+        }
+    }
+
+    [TestMethod]
+    public void Cities_ParseSearchAndNearest()
+    {
+        using var reader = new StreamReader(Path.Combine(AppContext.BaseDirectory, "Data", "world_cities.csv"));
+        IReadOnlyList<City> cities = CityCatalog.Parse(reader);
+
+        Assert.IsGreaterThan(7000, cities.Count);
+        City milwaukee = CityCatalog.Search(cities, "milwau").First();
+        StringAssert.StartsWith(milwaukee.Display, "Milwaukee");
+        Assert.AreEqual("Milwaukee", CityCatalog.Nearest(cities, new GeoPoint(43.05, -87.95))!.Name);
+        Assert.IsTrue(CityCatalog.Search(cities, "zurich").Any(c => c.Country == "Switzerland"));
+    }
+
+    [TestMethod]
+    public void TrayIcon_OnHasABarOffIsFaded()
+    {
+        int size = 24;
+        int glyph = SetterIcon.GlyphSize(size);
+        byte[] coverage = Enumerable.Repeat((byte)255, glyph * glyph).ToArray();
+
+        uint[] on = SetterIcon.Compose(coverage, size, 0xFFFFFFFF, on: true);
+        uint[] off = SetterIcon.Compose(coverage, size, 0xFFFFFFFF, on: false);
+
+        Assert.AreEqual(0xFFFFFFFFu, on[((size - 1) * size) + (size / 2)], "bar under the glyph");
+        Assert.AreEqual(0u, off[((size - 1) * size) + (size / 2)]);
+        Assert.AreEqual((uint)Math.Round(255 * SetterIcon.OffOpacity), off[size / 2] >> 24, "faded glyph");
+        Assert.HasCount(IcoEncoder.ImageOffset + 40 + (size * size * 4) + (4 * size), IcoEncoder.Encode(on, size));
+    }
+
+    [TestMethod]
+    public void RunEnd_IsTheSoonestClockStop()
+    {
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+        SensorSnapshot now = At.Local(2026, 10, 31, 14, 40);
+        Setter setter = Setter.Create("Screen on", 100) with
+        {
+            Changes = [new SettingChange(SettingIds.ScreenOffPluggedIn, new NumberValue(0))],
+            Until = [new ElapsedCondition(60), new ClockCondition(new TimeOnly(15, 0)), new CpuQuietCondition(10, 5)],
+        };
+        var run = new SetterRun(setter.Id, now.UtcNow);
+
+        Assert.AreEqual(now.UtcNow.AddMinutes(20), run.EndsAtUtc(setter, now), "3:00 PM comes before an hour is up");
+        Assert.AreEqual("On until 3:00 PM", SetterText.Status(setter, RunState.Empty.WithRun(run), now));
+        Assert.AreEqual(now.UtcNow.AddMinutes(60), run.EndsAtUtc(setter with { Until = [setter.Until[0]] }, now));
+        Assert.IsNull(run.EndsAtUtc(setter with { Until = [new CpuQuietCondition(10, 5)] }, now), "only a sensor can stop it");
+
+        var picked = new SetterRun(setter.Id, now.UtcNow) { TimerEndsUtc = now.UtcNow.AddMinutes(10) };
+        Assert.AreEqual(now.UtcNow.AddMinutes(10), picked.EndsAtUtc(setter, now), "a length picked from the tray menu");
+    }
+
+    [TestMethod]
+    public void TimeLeft_FullAtTheStart_StepsDown_EmptyAtTheEnd()
+    {
+        var start = new DateTime(2026, 10, 31, 14, 0, 0, DateTimeKind.Utc);
+        DateTime end = start.AddMinutes(10);
+
+        TimeLeft first = SetterIcon.Measure(start, end, start, 20);
+        Assert.AreEqual(1.0, first.Share);
+        Assert.AreEqual(start.AddSeconds(30), first.NextChangeUtc, "a 10 min run in 20 steps drops one every 30 sec");
+
+        TimeLeft half = SetterIcon.Measure(start, end, start.AddMinutes(5).AddSeconds(10), 20);
+        Assert.AreEqual(0.5, half.Share, "rounded up, so the last step still shows");
+        Assert.AreEqual(start.AddMinutes(5).AddSeconds(30), half.NextChangeUtc);
+
+        TimeLeft last = SetterIcon.Measure(start, end, end.AddSeconds(-1), 20);
+        Assert.AreEqual(0.05, last.Share, 1e-9);
+        Assert.AreEqual(end, last.NextChangeUtc);
+
+        Assert.AreEqual(new TimeLeft(0, null), SetterIcon.Measure(start, end, end, 20));
+        Assert.AreEqual(new TimeLeft(0, null), SetterIcon.Measure(end, end, start, 20), "no length");
+    }
+
+    [TestMethod]
+    public void TrayIcon_IndicatorsShowTheShareLeft()
+    {
+        const uint White = 0xFFFFFFFF;
+        uint track = (uint)Math.Round(255 * SetterIcon.TrackOpacity);
+        int size = 24;
+        int width = SetterIcon.IndicatorWidth(size);
+        int Index(int x, int y) => (y * size) + x;
+        uint[] Draw(DurationIndicator indicator, double share)
+        {
+            int glyph = SetterIcon.GlyphSize(size, indicator);
+            return SetterIcon.Compose(new byte[glyph * glyph], size, White, on: true, indicator, share);
+        }
+
+        uint[] across = Draw(DurationIndicator.HorizontalBar, 0.5);
+        Assert.AreEqual(White, across[Index(0, size - 1)], "full from the left");
+        Assert.AreEqual(track, across[Index(size - 1, size - 1)] >> 24, "the used part is a faint track");
+        Assert.AreEqual(0u, across[Index(size / 2, size - width - 1)], "a gap above the bar");
+
+        uint[] up = Draw(DurationIndicator.VerticalBar, 0.5);
+        Assert.AreEqual(White, up[Index(size - 1, size - 1)], "full from the bottom");
+        Assert.AreEqual(track, up[Index(size - 1, 0)] >> 24);
+
+        uint[] donut = Draw(DurationIndicator.Donut, 0.25);
+        int mid = size / 2;
+        Assert.AreEqual(White, donut[Index(mid, 0)], "12 o'clock");
+        Assert.AreEqual(White, donut[Index(mid + 7, mid - 8)], "half past 1 o'clock, in the first quarter");
+        Assert.AreEqual(track, donut[Index(0, mid)] >> 24, "9 o'clock is used up");
+        Assert.AreEqual(0u, donut[Index(mid, mid)], "no ring in the middle");
+        Assert.AreEqual(0u, donut[Index(0, 0)], "nor in the corners");
+
+        Assert.IsTrue(SetterIcon.GlyphSize(size, DurationIndicator.Donut) < SetterIcon.GlyphSize(size), "the glyph shrinks inside the ring");
+        Assert.AreEqual(0, (size - SetterIcon.GlyphSize(size, DurationIndicator.Donut)) % 2, "and sits on whole pixels");
+    }
+}
