@@ -122,9 +122,17 @@ public static class SetterText
     /// <summary>"Dark mode, Volume 20%".</summary>
     public static string Changes(Setter setter, ISettingCatalog catalog) => setter.Changes.Count == 0
         ? "Nothing to change yet"
-        : string.Join(", ", setter.Changes.Select(c => catalog.Find(c.SettingId) is { } s
-            ? $"{s.Info.Name} {Value(s.Info, c.Value)}"
-            : c.SettingId));
+        : string.Join(", ", SettingFamilies.Lines(setter.Changes, catalog).Select(line =>
+        {
+            SettingChange c = setter.Changes[line.Indexes[0]];
+            if (catalog.Find(c.SettingId) is not { } s)
+            {
+                return c.SettingId;
+            }
+
+            // A family set everywhere reads as the setting alone: "Screen off after Never".
+            return $"{(line.Indexes.Count > 1 ? s.Info.Name : s.Info.DisplayName)} {Value(s.Info, c.Value)}";
+        }));
 
     /// <summary>The flyout's second line for a setter: what it's doing now and until when.</summary>
     public static string Status(Setter setter, RunState state, SensorSnapshot now)

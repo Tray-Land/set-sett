@@ -41,6 +41,19 @@ public sealed record SettingInfo(string Id, string Name, string Group, string Gl
 
     public ValueHolder Holder { get; init; } = ValueHolder.Windows;
 
+    /// <summary>
+    /// Settings that are one thing to the user but several to Windows share a family id ("screen.off"
+    /// for the plugged in and on battery timeouts). The editor shows the family once, with an
+    /// "Applies when" choice, and the engine still claims and puts back each member on its own.
+    /// </summary>
+    public string? Family { get; init; }
+
+    /// <summary>For a family member, when it applies: "Plugged in", "On battery".</summary>
+    public string? Scope { get; init; }
+
+    /// <summary>The name with its scope: "Screen off after (plugged in)". Just the name for a setting outside a family.</summary>
+    public string DisplayName => Scope is null ? Name : $"{Name} ({Scope.ToLowerInvariant()})";
+
     /// <summary>What a newly added change starts at in the editor.</summary>
     public SettingValue DefaultValue => Kind switch
     {
