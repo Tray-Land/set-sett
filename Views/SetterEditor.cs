@@ -144,9 +144,9 @@ internal sealed partial class SetterEditor : UserControl
     private void BuildChanges()
     {
         _changes.Children.Clear();
-        for (int i = 0; i < _setter.Changes.Count; i++)
+        foreach (ChangeLine line in SettingFamilies.Lines(_setter.Changes, SetterHost.Catalog))
         {
-            _changes.Children.Add(ChangeRow(i));
+            _changes.Children.Add(ChangeRow(line));
         }
 
         if (_setter.Changes.Count == 0)
@@ -157,12 +157,13 @@ internal sealed partial class SetterEditor : UserControl
         _changes.Children.Add(AddSettingButton());
     }
 
-    private UIElement ChangeRow(int index)
+    // One line of the list: a setting, or a family (screen off, sleep) set for one power source or for all of them.
+    private UIElement ChangeRow(ChangeLine line)
     {
-        SettingChange change = _setter.Changes[index];
+        SettingChange change = _setter.Changes[line.Indexes[0]];
         void Remove()
         {
-            Commit(_setter with { Changes = [.. _setter.Changes.Where((_, i) => i != index)] });
+            Commit(_setter with { Changes = [.. _setter.Changes.Where((_, i) => !line.Indexes.Contains(i))] });
             BuildChanges();
         }
 
@@ -172,12 +173,62 @@ internal sealed partial class SetterEditor : UserControl
         }
 
         SettingInfo info = setting.Info;
-        string description = SettingRegistry.IsAvailable(info.Id) ? info.Description ?? "" : "Not available on this PC right now.";
-        return Row(info.Glyph, info.Name, Caption(description), ValueEditor(info, change.Value, value =>
+        string description = line.Members.Any(SettingRegistry.IsAvailable) ? info.Description ?? "" : "Not available on this PC right now.";
+        FrameworkElement value = ValueEditor(info, change.Value, next =>
+            () => Commit(_setter with { Changes = SettingFamilies.Revalue(_setter.Changes, line, next) }));
+
+        if (line.Family is null)
         {
-            SettingChange updated = change with { Value = value };
-            return () => Commit(_setter with { Changes = [.. _setter.Changes.Select((c, i) => i == index ? updated : c)] });
-        }), Remove);
+            return Row(info.Glyph, info.Name, Caption(description), value, Remove);
+        }
+
+        FrameworkElement? scope = ScopePicker(line);
+        if (scope is null)
+        {
+            return Row(info.Glyph, info.Name, Caption(description), value, Remove);
+        }
+
+        var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        controls.Children.Add(scope);
+        controls.Children.Add(value);
+        return Row(info.Glyph, info.Name, Caption(description), controls, Remove);
+    }
+
+    // "Applies when": Always, or one of the family's scopes the other lines don't already use. Hidden
+    // when this PC has only one scope (a desktop has no battery) and the line is already Always.
+    private FrameworkElement? ScopePicker(ChangeLine line)
+    {
+        ISettingCatalog catalog = SetterHost.Catalog;
+        IReadOnlyList<string> free = SettingFamilies.FreeMembers(_setter.Changes, catalog, line);
+        IReadOnlyList<string> family = SettingFamilies.Members(catalog, line.Family!);
+        bool always = line.IsAlways(family.Count);
+        if (always && family.Count(SettingRegistry.IsAvailable) < 2)
+        {
+            return null;
+        }
+
+        List<(string Text, IReadOnlyList<string> Members)> options = [];
+        if (free.Count == family.Count)
+        {
+            options.Add(("Always", family));
+        }
+
+        foreach (string member in free)
+        {
+            options.Add((catalog.Find(member)!.Info.Scope ?? member, [member]));
+        }
+
+        int selected = options.FindIndex(o => o.Members.SequenceEqual(line.Members));
+        var combo = Combo(options.Select(o => o.Text), Math.Max(0, selected), i =>
+        {
+            if (!options[i].Members.SequenceEqual(line.Members))
+            {
+                Commit(_setter with { Changes = SettingFamilies.Rescope(_setter.Changes, line, options[i].Members) });
+                BuildChanges();
+            }
+        }, "Applies when", 130);
+        ToolTipService.SetToolTip(combo, "Applies when");
+        return combo;
     }
 
     private FrameworkElement ValueEditor(SettingInfo info, SettingValue value, Func<SettingValue, Action> commitFor)
@@ -237,22 +288,31 @@ internal sealed partial class SetterEditor : UserControl
         {
             menu.Items.Clear();
             HashSet<string> used = [.. _setter.Changes.Select(c => c.SettingId)];
-            foreach (var group in SetterHost.Catalog.All.GroupBy(s => s.Info.Group))
+            ISettingCatalog catalog = SetterHost.Catalog;
+            foreach (var group in catalog.All.GroupBy(s => s.Info.Group))
             {
                 var sub = new MenuFlyoutSubItem { Text = group.Key };
-                foreach (ISetting setting in group)
+
+                // A family is listed once, by its first member; adding it covers the members not used yet.
+                HashSet<string> listed = [];
+                foreach (ISetting setting in group.Where(s => s.Info.Family is null || listed.Add(s.Info.Family)))
                 {
                     SettingInfo info = setting.Info;
-                    bool available = SettingRegistry.IsAvailable(info.Id);
+                    bool available = info.Family is null
+                        ? SettingRegistry.IsAvailable(info.Id)
+                        : SettingFamilies.Members(catalog, info.Family).Any(SettingRegistry.IsAvailable);
+                    bool free = info.Family is null
+                        ? !used.Contains(info.Id)
+                        : SettingFamilies.HasFreeMember(_setter.Changes, catalog, info.Family);
                     var item = new MenuFlyoutItem
                     {
                         Text = available ? info.Name : $"{info.Name} (not on this PC)",
                         Icon = new FontIcon { Glyph = info.Glyph },
-                        IsEnabled = available && !used.Contains(info.Id),
+                        IsEnabled = available && free,
                     };
                     item.Click += (_, _) =>
                     {
-                        Commit(_setter with { Changes = [.. _setter.Changes, new SettingChange(info.Id, info.DefaultValue)] });
+                        Commit(_setter with { Changes = SettingFamilies.Add(_setter.Changes, catalog, setting) });
                         BuildChanges();
                     };
                     sub.Items.Add(item);

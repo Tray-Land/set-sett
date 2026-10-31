@@ -183,7 +183,7 @@ public sealed partial class FlyoutPage : Page, IDisposable
         }
 
         string[] names = [.. problems
-            .Select(p => SetterHost.Catalog.Find(p.SettingId)?.Info.Name ?? p.SettingId)
+            .Select(p => SetterHost.Catalog.Find(p.SettingId)?.Info.DisplayName ?? p.SettingId)
             .Distinct()];
         StatusBar.Title = "Windows didn't accept a change";
         StatusBar.Message = $"Couldn't change {string.Join(", ", names)}. It may be turned off, blocked by a policy, or missing on this PC.";

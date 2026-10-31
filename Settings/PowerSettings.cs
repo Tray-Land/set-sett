@@ -22,13 +22,15 @@ internal sealed partial class PowerTimeoutSetting(SettingInfo info, Guid subgrou
     public static PowerTimeoutSetting ScreenOff(bool onBattery) => new(
         new SettingInfo(
             onBattery ? SettingIds.ScreenOffOnBattery : SettingIds.ScreenOffPluggedIn,
-            onBattery ? "Screen off after (on battery)" : "Screen off after (plugged in)",
+            "Screen off after",
             "Power",
             Glyphs.Monitor,
             ValueKind.Duration)
         {
             Description = "How long the PC waits before turning the screen off.",
             Durations = SettingIds.TimeoutChoices,
+            Family = "screen.off",
+            Scope = onBattery ? "On battery" : "Plugged in",
         },
         VideoSubgroup,
         VideoIdle,
@@ -37,13 +39,15 @@ internal sealed partial class PowerTimeoutSetting(SettingInfo info, Guid subgrou
     public static PowerTimeoutSetting Sleep(bool onBattery) => new(
         new SettingInfo(
             onBattery ? SettingIds.SleepOnBattery : SettingIds.SleepPluggedIn,
-            onBattery ? "Sleep after (on battery)" : "Sleep after (plugged in)",
+            "Sleep after",
             "Power",
             Glyphs.Moon,
             ValueKind.Duration)
         {
             Description = "How long the PC waits before going to sleep.",
             Durations = SettingIds.TimeoutChoices,
+            Family = "sleep",
+            Scope = onBattery ? "On battery" : "Plugged in",
         },
         SleepSubgroup,
         StandbyIdle,
