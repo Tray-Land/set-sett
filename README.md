@@ -44,7 +44,7 @@ You build **setters**. A setter is:
 
 ![The setter editor](docs/editor.png)
 
-**Settings.** Start with Windows, and your location for sunrise and sunset: pick your city from the built-in list (no permission, no network), or use your location once.
+**Settings.** In the flyout and in the editor window: Start with Windows, and your location for sunrise and sunset. Pick your city from the built-in list (no permission, no network), or use your location once. The flyout shows the current place, with a link to change it in the editor window.
 
 ## Install
 

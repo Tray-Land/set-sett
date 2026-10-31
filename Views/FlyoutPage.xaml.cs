@@ -329,7 +329,9 @@ public sealed partial class FlyoutPage : Page, IDisposable
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        SettingsHost.Content = new SettingsView();
+        // Location requests can take focus (a consent prompt) and hide the flyout mid-request, so the
+        // flyout's page only shows the place and links to the editor window's Settings page.
+        SettingsHost.Content = new SettingsView(inFlyout: true);
         MainPanel.Visibility = Visibility.Collapsed;
         SettingsPanel.Visibility = Visibility.Visible;
     }

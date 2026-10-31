@@ -13,15 +13,36 @@ public sealed partial class SettingsView : UserControl
 {
     private bool _loading = true;
 
-    public SettingsView()
+    /// <param name="inFlyout">
+    /// True in the flyout. Setting the place can raise a Windows consent prompt that takes focus and
+    /// hides the flyout mid-request, so there it's read-only with a link to the editor's Settings page.
+    /// </param>
+    public SettingsView(bool inFlyout = false)
     {
         InitializeComponent();
         VersionText.Text = $"{App.DisplayName} {GetVersion()}";
         _ = LoadStartupStateAsync();
 
-        var picker = new LocationPicker();
-        picker.Changed += Refresh;
-        LocationHost.Content = picker;
+        if (inFlyout)
+        {
+            var panel = new StackPanel { Spacing = 4 };
+            panel.Children.Add(new TextBlock
+            {
+                Text = PlaceService.Home is { } home ? home.Name : "No location set.",
+                TextWrapping = TextWrapping.Wrap,
+            });
+            var change = new HyperlinkButton { Content = "Change location in Settings", Padding = new Thickness(0) };
+            change.Click += (_, _) => App.Current.ShowSettings();
+            panel.Children.Add(change);
+            LocationHost.Content = panel;
+        }
+        else
+        {
+            var picker = new LocationPicker();
+            picker.Changed += Refresh;
+            LocationHost.Content = picker;
+        }
+
         Refresh();
         Unloaded += (_, _) => PlaceService.ReleaseCities();
         _loading = false;
