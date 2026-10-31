@@ -209,6 +209,49 @@ public sealed class SetterEngineTests
     }
 
     [TestMethod]
+    public async Task UnavailableSetting_IsReportedAndLeavesNoClaim()
+    {
+        var theme = FakeSetting.Theme();
+        theme.Available = false;
+        var engine = new SetterEngine(new SettingCatalog([theme]), new MemoryStore());
+
+        await engine.StartAsync(DarkFor(30), At.Local(2026, 10, 31, 12));
+
+        Assert.HasCount(1, engine.Problems);
+        Assert.AreEqual(SettingIds.AppsTheme, engine.Problems[0].SettingId);
+        Assert.IsEmpty(engine.State.Claims);
+        Assert.AreEqual(0, theme.Writes);
+    }
+
+    [TestMethod]
+    public async Task MissingSetting_IsReportedAndLeavesNoClaim()
+    {
+        var engine = new SetterEngine(new SettingCatalog([FakeSetting.Volume()]), new MemoryStore());
+
+        await engine.StartAsync(DarkFor(30), At.Local(2026, 10, 31, 12));
+
+        Assert.HasCount(1, engine.Problems);
+        Assert.IsEmpty(engine.State.Claims);
+    }
+
+    [TestMethod]
+    public async Task RejectedValue_IsReportedAndLeavesNoClaim()
+    {
+        var theme = FakeSetting.Theme();
+        var engine = new SetterEngine(new SettingCatalog([theme]), new MemoryStore());
+        Setter setter = Setter.Create("Bad", 100) with
+        {
+            Changes = [new SettingChange(SettingIds.AppsTheme, new NumberValue(5))],
+        };
+
+        await engine.StartAsync(setter, At.Local(2026, 10, 31, 12));
+
+        Assert.HasCount(1, engine.Problems);
+        Assert.IsEmpty(engine.State.Claims);
+        Assert.AreEqual(0, theme.Writes);
+    }
+
+    [TestMethod]
     public async Task DeletedSetter_StillPutsBackWhatItChanged()
     {
         var theme = FakeSetting.Theme();

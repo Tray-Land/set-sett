@@ -167,12 +167,37 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
 
     private async Task ApplyChangesAsync(Setter setter, Func<SettingChange, bool> include)
     {
+        // Unavailable family members wait until the loop ends: a PC without a battery has no
+        // "on battery" member by design, which is fine when its sibling was applied.
+        List<(string SettingId, string Family)> unavailableMembers = [];
+        HashSet<string> appliedFamilies = [];
         foreach (SettingChange change in setter.Changes.Where(include))
         {
             ISetting? setting = catalog.Find(change.SettingId);
-            if (setting is null || !setting.Info.Accepts(change.Value) || !await setting.IsAvailableAsync())
+            if (setting is null || !setting.Info.Accepts(change.Value))
             {
+                // Skipped, not silent: report it like a refused write so the flyout can say so.
+                _problems.Add(new SettingProblem(setter.Id, change.SettingId, DateTime.UtcNow));
                 continue;
+            }
+
+            if (!await setting.IsAvailableAsync())
+            {
+                if (setting.Info.Family is { } family)
+                {
+                    unavailableMembers.Add((change.SettingId, family));
+                }
+                else
+                {
+                    _problems.Add(new SettingProblem(setter.Id, change.SettingId, DateTime.UtcNow));
+                }
+
+                continue;
+            }
+
+            if (setting.Info.Family is { } available)
+            {
+                appliedFamilies.Add(available);
             }
 
             if (setter.PutBack)
@@ -188,6 +213,11 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
                 State = ClaimLedger.Discard(State, change.SettingId, setter.Id);
                 store.Save(State);
             }
+        }
+
+        foreach ((string settingId, _) in unavailableMembers.Where(m => !appliedFamilies.Contains(m.Family)))
+        {
+            _problems.Add(new SettingProblem(setter.Id, settingId, DateTime.UtcNow));
         }
     }
 }

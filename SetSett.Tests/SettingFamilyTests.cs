@@ -152,6 +152,36 @@ public sealed class SettingFamilyTests
     }
 
     [TestMethod]
+    public async Task Always_OnAPcWithoutABattery_IsNotAProblem()
+    {
+        var (catalog, ac, dc) = Catalog();
+        dc.Available = false;
+        var engine = new SetterEngine(catalog, new MemoryStore());
+        Setter setter = Setter.Create("stay on", 1) with { Changes = [Dc(0), Ac(0)] };
+
+        await engine.StartAsync(setter, At.Local(2026, 1, 5, 9));
+
+        Assert.IsEmpty(engine.Problems);
+        Assert.HasCount(1, engine.State.Claims);
+        Assert.AreEqual(new NumberValue(0), ac.Value);
+    }
+
+    [TestMethod]
+    public async Task Family_WithNoMemberAvailable_IsReported()
+    {
+        var (catalog, ac, dc) = Catalog();
+        ac.Available = false;
+        dc.Available = false;
+        var engine = new SetterEngine(catalog, new MemoryStore());
+        Setter setter = Setter.Create("stay on", 1) with { Changes = [Ac(0), Dc(0)] };
+
+        await engine.StartAsync(setter, At.Local(2026, 1, 5, 9));
+
+        Assert.HasCount(2, engine.Problems);
+        Assert.IsEmpty(engine.State.Claims);
+    }
+
+    [TestMethod]
     public async Task OnBatteryOnly_LeavesPluggedInAlone()
     {
         var (catalog, ac, dc) = Catalog(ac: 300, dc: 120);
