@@ -103,6 +103,12 @@ internal sealed partial class SetterEditor : UserControl
 
     private void Commit(Setter updated)
     {
+        // Save appends unknown ids, so a deleted setter would come back.
+        if (SetterHost.Find(_setter.Id) is null)
+        {
+            return;
+        }
+
         _setter = updated;
         SetterHost.Save(updated);
         ShowTrayIconDetails();
@@ -689,6 +695,10 @@ internal sealed partial class SetterEditor : UserControl
         confirm.Click += (_, _) =>
         {
             flyout.Hide();
+
+            // Drop a pending slider save, or unloading would commit it and Save would bring the setter back.
+            _sliderTimer.Stop();
+            _pendingSlider = null;
             SetterHost.Remove(_setter.Id);
             _onDeleted();
         };
