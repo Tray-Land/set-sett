@@ -318,7 +318,24 @@ internal static class ConditionEditors
         string[] modes = stop ? ["Leaves", "Arrives at"] : ["At", "Away from"];
         int mode = stop ? (c.Not ? 0 : 1) : (c.Not ? 1 : 0);
         var name = new TextBox { Header = "Place name", Text = c.Place, MinWidth = 160 };
-        name.TextChanged += (_, _) => set(c = c with { Place = name.Text });
+        // The name is part of the condition, so saving per keystroke would restart a running setter each letter.
+        // Commit when focus leaves or on Enter instead.
+        void CommitName()
+        {
+            if (name.Text != c.Place)
+            {
+                set(c = c with { Place = name.Text });
+            }
+        }
+
+        name.LostFocus += (_, _) => CommitName();
+        name.KeyDown += (_, e) =>
+        {
+            if (e.Key == Windows.System.VirtualKey.Enter)
+            {
+                CommitName();
+            }
+        };
         ComboBox radius = Combo(
             PlaceCondition.RadiusChoices.Select(r => r >= 1000 ? $"Within {r / 1000} km" : $"Within {r} m"),
             Math.Max(0, Array.IndexOf(PlaceCondition.RadiusChoices, c.RadiusMeters)),
