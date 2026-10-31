@@ -19,7 +19,7 @@ You build **setters**. A setter is:
 | Personalization | Windows mode (light/dark), App mode (light/dark), Transparency effects |
 | Sound | Volume, Mute, Microphone mute (default devices) |
 | Connections | Wi-Fi, Bluetooth |
-| Power | Screen off after and Sleep after (plugged in and on battery), Keep awake |
+| Power | Screen off after and Sleep after (always, only when plugged in, or only on battery), Keep awake |
 
 | Starts automatically when | Stops when |
 |---|---|
