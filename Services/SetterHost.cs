@@ -83,7 +83,10 @@ internal static class SetterHost
             // Start the sensors the saved state needs before deciding, so they've read what they can.
             Snapshot = BuildSnapshot();
             // Sensor reports that arrive meanwhile queue an evaluation that waits for the gate.
-            UpdateSensors(SetterPolicy.SensorsNeeded(Setters, new FileRunStateStore().Load(), Snapshot));
+            // The engine's state is still empty until RecoverAsync, so every sensor's watch list (apps
+            // included) comes from the saved state, or recovered runs' apps would read as not running.
+            RunState saved = new FileRunStateStore().Load();
+            UpdateSensors(SetterPolicy.SensorsNeeded(Setters, saved, Snapshot), saved);
             await _engine.RecoverAsync(Setters, BuildSnapshot());
         }
         catch (Exception ex)
@@ -121,7 +124,7 @@ internal static class SetterHost
             Gate.Release();
         }
 
-        UpdateSensors(Sensors.None);
+        UpdateSensors(Sensors.None, Run);
     }
 
     /// <summary>
@@ -321,7 +324,7 @@ internal static class SetterHost
         }
 
         Snapshot = BuildSnapshot();
-        UpdateSensors(SetterPolicy.SensorsNeeded(Setters, Run, Snapshot) | (_editorOpen ? EditorSensors : Sensors.None));
+        UpdateSensors(SetterPolicy.SensorsNeeded(Setters, Run, Snapshot) | (_editorOpen ? EditorSensors : Sensors.None), Run);
         Snapshot = BuildSnapshot();
         ScheduleWake();
         Changed?.Invoke();
@@ -339,7 +342,7 @@ internal static class SetterHost
     };
 
     // Starts the sensors that are needed and stops the rest.
-    private static void UpdateSensors(Sensors needed)
+    private static void UpdateSensors(Sensors needed, RunState run)
     {
         SetSensor(ref _network, needed.HasFlag(Sensors.Network) || needed.HasFlag(Sensors.Location), () =>
         {
@@ -355,7 +358,7 @@ internal static class SetterHost
         SetSensor(ref _devices, needed.HasFlag(Sensors.Devices), () => Watch(new DeviceSensor(), s => s.Changed += QueueEvaluate));
         SetSensor(ref _cpu, needed.HasFlag(Sensors.Cpu), () => Watch(new CpuSensor(), s => s.Changed += QueueEvaluate));
         SetSensor(ref _processes, needed.HasFlag(Sensors.Processes), () => Watch(new ProcessSensor(), s => s.Changed += QueueEvaluate));
-        _processes?.Watch(SetterPolicy.ProcessesWatched(Setters, Run, Snapshot));
+        _processes?.Watch(SetterPolicy.ProcessesWatched(Setters, run, Snapshot));
 
         // Never prompt from the background: run only when Windows already allows location.
         bool location = needed.HasFlag(Sensors.Location) && PlaceService.LocationAllowed;

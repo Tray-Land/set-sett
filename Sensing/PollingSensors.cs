@@ -15,11 +15,13 @@ internal sealed partial class ProcessSensor : IDisposable
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(5);
 
     private readonly Timer _timer;
+    private readonly object _lock = new();
     private IReadOnlySet<string> _watched = new HashSet<string>();
 
     public ProcessSensor()
     {
-        _timer = new Timer(_ => Poll(), null, TimeSpan.Zero, Interval);
+        // Idle until Watch names something: a poll with an empty watch list would publish a stale answer.
+        _timer = new Timer(_ => Poll(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     public event Action? Changed;
@@ -33,28 +35,38 @@ internal sealed partial class ProcessSensor : IDisposable
 
     public void Watch(IReadOnlySet<string> names)
     {
-        if (names.SetEquals(_watched))
+        lock (_lock)
         {
-            return;
+            if (Running is not null && names.SetEquals(_watched))
+            {
+                return;
+            }
+
+            _watched = names;
+            // Poll only while something is watched; the first Watch starts the timer.
+            _timer.Change(names.Count > 0 ? Interval : Timeout.InfiniteTimeSpan, names.Count > 0 ? Interval : Timeout.InfiniteTimeSpan);
         }
 
-        _watched = names;
         Poll();
     }
 
     public void Dispose() => _timer.Dispose();
 
+    // Serialized, and the watch list is read inside the lock, so a poll can't publish a result for an old list.
     private void Poll()
     {
-        IReadOnlySet<string> watched = _watched;
-        HashSet<string> running = Snapshot();
-        running.IntersectWith(watched);
-        if (Running is { } previous && previous.Count == running.Count && running.SetEquals(previous))
+        lock (_lock)
         {
-            return;
+            HashSet<string> running = Snapshot();
+            running.IntersectWith(_watched);
+            if (Running is { } previous && previous.Count == running.Count && running.SetEquals(previous))
+            {
+                return;
+            }
+
+            Running = running;
         }
 
-        Running = running;
         Changed?.Invoke();
     }
 
@@ -132,6 +144,7 @@ internal sealed partial class CpuSensor : IDisposable
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(10);
 
     private readonly Timer _timer;
+    private readonly object _lock = new();
     private (long Idle, long Kernel, long User)? _last;
 
     public CpuSensor()
@@ -149,21 +162,31 @@ internal sealed partial class CpuSensor : IDisposable
     private static (long Idle, long Kernel, long User)? Read() =>
         GetSystemTimes(out long idle, out long kernel, out long user) ? (idle, kernel, user) : null;
 
+    // Timer callbacks can overlap if one runs late; keep _last and Samples consistent.
     private void Sample()
     {
-        if (Read() is not { } now)
+        lock (_lock)
         {
-            return;
+            if (Read() is not { } now)
+            {
+                return;
+            }
+
+            if (_last is { } last)
+            {
+                double percent = CpuMath.Percent(now.Idle - last.Idle, now.Kernel - last.Kernel, now.User - last.User);
+                Samples = CpuMath.Append(Samples, new CpuSample(DateTime.UtcNow, percent));
+            }
+            else
+            {
+                _last = now;
+                return;
+            }
+
+            _last = now;
         }
 
-        if (_last is { } last)
-        {
-            double percent = CpuMath.Percent(now.Idle - last.Idle, now.Kernel - last.Kernel, now.User - last.User);
-            Samples = CpuMath.Append(Samples, new CpuSample(DateTime.UtcNow, percent));
-            Changed?.Invoke();
-        }
-
-        _last = now;
+        Changed?.Invoke();
     }
 
     [LibraryImport("kernel32.dll")]
