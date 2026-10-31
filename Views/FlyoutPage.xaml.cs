@@ -21,6 +21,7 @@ public sealed partial class FlyoutPage : Page, IDisposable
     private bool _listening;
     private readonly List<ProgressRing> _rings = [];
     private DispatcherTimer? _ringTimer;
+    private string _lastKey = "";
 
     public FlyoutPage()
     {
@@ -33,18 +34,18 @@ public sealed partial class FlyoutPage : Page, IDisposable
     {
         if (!_listening)
         {
-            SetterHost.Changed += Render;
+            SetterHost.Changed += OnChanged;
             _listening = true;
         }
 
-        Render();
+        Render(force: true);
     }
 
     public void OnHidden()
     {
         if (_listening)
         {
-            SetterHost.Changed -= Render;
+            SetterHost.Changed -= OnChanged;
             _listening = false;
         }
 
@@ -54,12 +55,25 @@ public sealed partial class FlyoutPage : Page, IDisposable
 
     public void Dispose() => OnHidden();
 
-    private void Render()
+    // Changed fires after every evaluation, often with nothing visible different (a CPU sample). A
+    // rebuild would close an open right-click menu and drop keyboard focus, so it's skipped then.
+    private void OnChanged() => Render();
+
+    private void Render(bool force = false)
     {
         IReadOnlyList<Setter> setters = [.. SetterHost.Setters.Where(s => s.Enabled && s.ShowInFlyout)];
         RunState run = SetterHost.Run;
         SensorSnapshot now = SetterHost.Snapshot;
 
+        bool noSetters = SetterHost.Setters.Count == 0;
+        string key = DisplayKey(setters, run, now, noSetters);
+        ShowProblems();
+        if (!force && key == _lastKey)
+        {
+            return;
+        }
+
+        _lastKey = key;
         StopRingTimer();
         SetterList.Children.Clear();
         foreach (Setter setter in setters)
@@ -70,10 +84,27 @@ public sealed partial class FlyoutPage : Page, IDisposable
         }
 
         StartRingTimer();
-        bool noSetters = SetterHost.Setters.Count == 0;
         EmptyState.Visibility = setters.Count == 0 && noSetters ? Visibility.Visible : Visibility.Collapsed;
         NoneShownState.Visibility = setters.Count == 0 && !noSetters ? Visibility.Visible : Visibility.Collapsed;
-        ShowProblems();
+    }
+
+    /// <summary>Everything the cards and empty states show, so an unchanged render can be skipped.</summary>
+    private static string DisplayKey(IReadOnlyList<Setter> setters, RunState run, SensorSnapshot now, bool noSetters)
+    {
+        var key = new System.Text.StringBuilder();
+        key.Append(noSetters).Append('#').Append(setters.Count);
+        foreach (Setter setter in setters)
+        {
+            string ring = run.RunOf(setter.Id) is { } r && r.EndsAtUtc(setter, now) is { } end
+                ? $"{r.ActiveSinceUtc.Ticks}-{end.Ticks}"
+                : "";
+            key.Append('\n')
+                .Append(setter.Id).Append('|').Append(Label(setter)).Append('|').Append(setter.Glyph).Append('|')
+                .Append(SetterText.Status(setter, run, now)).Append('|').Append(run.IsActive(setter.Id)).Append('|')
+                .Append(setter.CanRun).Append('|').Append(setter.IsAutomatic).Append('|').Append(ring);
+        }
+
+        return key.ToString();
     }
 
     /// <summary>Right-click menu: Edit, and Delete behind a submenu so one stray click can't lose a setter.</summary>
@@ -94,7 +125,7 @@ public sealed partial class FlyoutPage : Page, IDisposable
         confirm.Click += (_, _) =>
         {
             SetterHost.Remove(setter.Id);
-            Render();
+            Render(force: true);
         };
         delete.Items.Add(confirm);
         menu.Items.Add(delete);
