@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 
-namespace SettSet.Controls;
+namespace SetSett.Controls;
 
 /// <summary>
 /// Acrylic backdrop styled like the shell's own flyouts: neutral by default, tinted with a dark

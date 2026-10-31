@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Templates for the time-of-day controls (TimeRangePicker, TimeHandle, WeekSchedule), ported from the
+    Controls-Experiment lab. Merged into App.xaml. Framework styles are referenced as ThemeResource so the
+    lookup happens when a template is applied, not while this dictionary loads.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:SetSett.Controls">
+
+    <Style TargetType="local:TimeHandle">
+        <Setter Property="Width" Value="44" />
+        <Setter Property="Height" Value="44" />
+        <Setter Property="IsTabStop" Value="True" />
+        <Setter Property="UseSystemFocusVisuals" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="local:TimeHandle">
+                    <Grid x:Name="Root" Background="Transparent">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="Dot.Width" Value="26" />
+                                        <Setter Target="Dot.Height" Value="26" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="Dot.Width" Value="20" />
+                                        <Setter Target="Dot.Height" Value="20" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="FocusStates">
+                                <VisualState x:Name="Unfocused" />
+                                <VisualState x:Name="PointerFocused" />
+                                <VisualState x:Name="Focused">
+                                    <VisualState.Setters>
+                                        <Setter Target="FocusRing.Visibility" Value="Visible" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="RoleStates">
+                                <VisualState x:Name="Start" />
+                                <VisualState x:Name="End">
+                                    <VisualState.Setters>
+                                        <Setter Target="Dot.Fill" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                                        <Setter Target="Dot.Stroke" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+
+                        <Ellipse
+                            x:Name="FocusRing"
+                            Width="38"
+                            Height="38"
+                            Stroke="{ThemeResource FocusStrokeColorOuterBrush}"
+                            StrokeThickness="2"
+                            Visibility="Collapsed" />
+                        <Ellipse
+                            x:Name="Dot"
+                            Width="22"
+                            Height="22"
+                            Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                            Stroke="{ThemeResource TextFillColorPrimaryBrush}"
+                            StrokeThickness="3" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="local:WeekSchedule">
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="local:WeekSchedule">
+                    <!--  Sideways scrolling for narrow windows, vertical scrolling for the body only so the day headers stay put.  -->
+                    <ScrollViewer
+                        x:Name="PART_HorizontalScroller"
+                        HorizontalScrollBarVisibility="Auto"
+                        HorizontalScrollMode="Auto"
+                        VerticalScrollBarVisibility="Disabled"
+                        VerticalScrollMode="Disabled"
+                        ZoomMode="Disabled">
+                        <Grid x:Name="PART_Content" HorizontalAlignment="Left">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid x:Name="PART_HeaderGrid" />
+                            <ScrollViewer
+                                x:Name="PART_VerticalScroller"
+                                Grid.Row="1"
+                                Height="{TemplateBinding ViewportHeight}"
+                                HorizontalScrollBarVisibility="Disabled"
+                                HorizontalScrollMode="Disabled"
+                                VerticalScrollBarVisibility="Auto"
+                                ZoomMode="Disabled">
+                                <Grid x:Name="PART_BodyGrid" />
+                            </ScrollViewer>
+                        </Grid>
+                    </ScrollViewer>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="local:TimeRangePicker">
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="local:TimeRangePicker">
+                    <Grid x:Name="Root">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="ModeStates">
+                                <VisualState x:Name="Calendar" />
+                                <VisualState x:Name="Clock">
+                                    <VisualState.Setters>
+                                        <Setter Target="PART_CalendarHost.Visibility" Value="Collapsed" />
+                                        <Setter Target="PART_ClockHost.Visibility" Value="Visible" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid
+                            x:Name="PART_Fields"
+                            Margin="0,0,0,12"
+                            ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox
+                                x:Name="PART_StartBox"
+                                VerticalAlignment="Top"
+                                Header="From" />
+                            <FontIcon
+                                x:Name="PART_RangeArrow"
+                                Grid.Column="1"
+                                Margin="0,0,0,10"
+                                VerticalAlignment="Bottom"
+                                FontSize="12"
+                                Glyph="&#xE76C;" />
+                            <StackPanel
+                                x:Name="PART_EndPanel"
+                                Grid.Column="2"
+                                Spacing="2">
+                                <TextBox x:Name="PART_EndBox" Header="To" />
+                                <TextBlock
+                                    x:Name="PART_EndHint"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Style="{ThemeResource CaptionTextBlockStyle}"
+                                    Text="Next day"
+                                    Visibility="Collapsed" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid Grid.Row="1">
+                            <Grid
+                                x:Name="PART_CalendarHost"
+                                Height="{TemplateBinding CalendarHeight}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{ThemeResource ControlCornerRadius}">
+                                <ScrollViewer
+                                    x:Name="PART_CalendarScroller"
+                                    HorizontalScrollBarVisibility="Disabled"
+                                    HorizontalScrollMode="Disabled"
+                                    VerticalScrollBarVisibility="Auto"
+                                    ZoomMode="Disabled">
+                                    <Canvas x:Name="PART_CalendarCanvas" />
+                                </ScrollViewer>
+                            </Grid>
+
+                            <Grid
+                                x:Name="PART_ClockHost"
+                                Height="300"
+                                Visibility="Collapsed">
+                                <Canvas x:Name="PART_ClockCanvas" Background="Transparent" />
+                                <StackPanel
+                                    MaxWidth="96"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    IsHitTestVisible="False">
+                                    <TextBlock
+                                        x:Name="PART_ClockDuration"
+                                        HorizontalAlignment="Center"
+                                        Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                    <TextBlock
+                                        x:Name="PART_ClockRange"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Style="{ThemeResource CaptionTextBlockStyle}"
+                                        TextAlignment="Center"
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>
