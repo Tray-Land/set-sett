@@ -252,7 +252,7 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
         edit.Click += (_, _) => editSetter(setterId);
         var open = new MenuFlyoutItem { Text = $"Open {App.DisplayName}", Icon = new FontIcon { Glyph = "" } };
         open.Click += (_, _) => showFlyout();
-        var quit = new MenuFlyoutItem { Text = "Exit", Icon = new FontIcon { Glyph = "" } };
+        var quit = new MenuFlyoutItem { Text = "Quit", Icon = new FontIcon { Glyph = "" } };
         quit.Click += (_, _) => exit();
 
         // Edit and Open first: the top is farthest from the icon the menu opens from.

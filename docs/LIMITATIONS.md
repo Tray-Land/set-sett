@@ -25,7 +25,7 @@ Numbers get one step of slack (volume 31 still counts as 30) because Windows sto
 
 Changes Windows keeps (theme, volume, radios, power-plan timeouts) stay set if Set Sett stops unexpectedly. Set Sett saves what to put back in `state.json` before every change, and recovers the next time it starts. It puts back settings whose timers ran out and drops any put-back you made obsolete by changing the setting yourself. Until then, a change can stay in place:
 
-- **Exit** puts every running setter's settings back first. That's the clean way to stop.
+- **Quit** puts every running setter's settings back first. That's the clean way to stop.
 - **A crash or hang**: Set Sett registers with `RegisterApplicationRestart`, so Windows restarts it. Windows only does this for a process that ran at least 60 seconds.
 - **Shutdown or sign-out**: recovery runs at the next sign-in if "Start with Windows" is on, otherwise the next time you open Set Sett.
 

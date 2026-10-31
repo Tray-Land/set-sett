@@ -5,7 +5,7 @@
 This is a tray-only WinUI 3 app built from the `winui-tray-app` skill scaffold on top of `winapp new`. Load that skill before changing app lifetime, the flyout, the tray icon, polling, settings, or packaging.
 
 - Launch with `winapp run` (or `dotnet run`); never register the package by hand. Use `winapp run --clean` to test first-run behavior (it also wipes setters and state).
-- `App.xaml.cs` owns the main tray icon, the per-setter icons (`Services/SetterTrayIcons`), single instance, and the only exit path (the Exit menu, which puts every running setter's settings back first). There is no main window.
+- `App.xaml.cs` owns the main tray icon, the per-setter icons (`Services/SetterTrayIcons`), single instance, and the only exit path (the Quit menu, which puts every running setter's settings back first). There is no main window.
 - The flyout (`Views/TrayFlyoutWindow`) is hidden on dismiss and closed after a minute hidden. Anything it starts, it must stop in `FlyoutPage.OnHidden` / `Dispose`.
 - Set Sett makes no network calls and has no network capability; the scaffold's ForegroundPoller, Secrets, and CredentialStore were removed.
 - Put pure decision logic in `SetSett.Core` (net10.0, no WinRT), covered by `SetSett.Tests` (MSTest). Run `dotnet test SetSett.Tests\SetSett.Tests.csproj`.

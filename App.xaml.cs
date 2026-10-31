@@ -46,7 +46,7 @@ public partial class App : Application
     {
         InitializeComponent();
 
-        // A tray app lives on after its windows close; only the Exit menu ends it.
+        // A tray app lives on after its windows close; only the Quit menu ends it.
         DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
         UnhandledException += (_, e) => LogCrash(e.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, e) => LogCrash(e.ExceptionObject as Exception);
@@ -238,7 +238,7 @@ public partial class App : Application
         edit.Click += (_, _) => ShowEditor();
         MenuFlyoutItem settings = new() { Text = "Settings", Icon = new FontIcon { Glyph = "" } };
         settings.Click += (_, _) => ShowSettings();
-        MenuFlyoutItem exit = new() { Text = "Exit", Icon = new FontIcon { Glyph = "" } };
+        MenuFlyoutItem exit = new() { Text = "Quit", Icon = new FontIcon { Glyph = "" } };
         ToolTipService.SetToolTip(exit, "Stops every setter and puts its settings back");
         exit.Click += (_, _) => ExitApp();
 
