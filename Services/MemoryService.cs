@@ -1,7 +1,7 @@
 using System.Runtime;
 using Windows.Win32;
 
-namespace SettSet.Services;
+namespace SetSett.Services;
 
 /// <summary>
 /// Gives memory back to Windows once the app is idle, the state a tray app spends nearly all its

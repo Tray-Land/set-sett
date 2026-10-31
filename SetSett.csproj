@@ -3,7 +3,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
-    <RootNamespace>SettSet</RootNamespace>
+    <RootNamespace>SetSett</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon Condition="Exists('Assets\AppIcon.ico')">Assets\AppIcon.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
@@ -15,7 +15,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <NoWarn>$(NoWarn);CS0618</NoWarn>
+    <!--
+      CsWinRT1032 flags every collection expression typed as IReadOnlyList/IEnumerable. Set Sett's
+      model uses them as plain .NET collections that never cross into WinRT; anything that does
+      (DeviceSensor's property list) is built as a concrete List.
+    -->
+    <NoWarn>$(NoWarn);CS0618;CsWinRT1032</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <Content Include="Assets\SplashScreen.scale-200.png" />
@@ -28,7 +33,15 @@
     <Content Include="Assets\AppIcon.ico" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
     <Content Include="Assets\AppIcon-dark.ico" />
+    <!-- The offline city list behind the location picker (from TheJoeFin/SimpleSunriseSunset). -->
+    <Content Include="Assets\Data\world_cities.csv" />
     <Content Remove="branding\**" />
+    <!-- The Core library and its tests are their own projects. -->
+    <Compile Remove="SetSett.Core\**;SetSett.Tests\**" />
+    <None Remove="SetSett.Core\**;SetSett.Tests\**" />
+    <Content Remove="SetSett.Core\**;SetSett.Tests\**" />
+    <Page Remove="SetSett.Core\**;SetSett.Tests\**" />
+    <PRIResource Remove="SetSett.Core\**;SetSett.Tests\**" />
     <!-- Release builds (build-msix-for-gh.ps1) package the App Installer feed so the app keeps updating itself. -->
     <Content Include="$(ReleaseAppInstallerPath)" Condition="'$(ReleaseAppInstallerPath)' != ''">
       <Link>Update.appinstaller</Link>
@@ -37,6 +50,9 @@
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="SetSett.Core\SetSett.Core.csproj" />
   </ItemGroup>
   <!--
     Defining the "Msix" ProjectCapability here allows the Single-project MSIX Packaging

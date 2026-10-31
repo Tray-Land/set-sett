@@ -3,8 +3,8 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
-using SettSet.Controls;
-using SettSet.Services;
+using SetSett.Controls;
+using SetSett.Services;
 using Windows.Graphics;
 using Windows.UI.ViewManagement;
 using Windows.Win32;
@@ -14,7 +14,7 @@ using Windows.Win32.UI.WindowsAndMessaging;
 using WinRT.Interop;
 using WinUIEx;
 
-namespace SettSet.Views;
+namespace SetSett.Views;
 
 /// <summary>
 /// Borderless, always-on-top popup shown against the tray icon, styled like the shell's own

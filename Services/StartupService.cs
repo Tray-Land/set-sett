@@ -1,11 +1,11 @@
 using Windows.ApplicationModel;
 
-namespace SettSet.Services;
+namespace SetSett.Services;
 
 /// <summary>Wraps the MSIX "start with Windows" task declared in Package.appxmanifest.</summary>
 internal static class StartupService
 {
-    private const string TaskId = "SettSetStartup";
+    private const string TaskId = "SetSettStartup";
 
     /// <summary>Returns the current state, or null when the app runs unpackaged.</summary>
     public static async Task<StartupTaskState?> GetStateAsync()

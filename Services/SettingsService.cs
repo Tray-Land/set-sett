@@ -2,7 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Windows.Storage;
 
-namespace SettSet.Services;
+namespace SetSett.Services;
 
 /// <summary>
 /// Typed wrapper over <see cref="ApplicationData.LocalSettings"/>. Every read falls back to a
@@ -22,6 +22,24 @@ internal static class SettingsService
     {
         get => Get(nameof(HasLaunchedBefore), false);
         set => Set(nameof(HasLaunchedBefore), value);
+    }
+
+    /// <summary>
+    /// The next tray icon id for a new setter. Ids are never reused, because Windows remembers per id
+    /// whether the user lets an icon show on the taskbar. The app's own icon is 1.
+    /// </summary>
+    public static uint TakeTrayIconId()
+    {
+        uint id = Get(nameof(TakeTrayIconId), 100u);
+        Set(nameof(TakeTrayIconId), id + 1);
+        return id;
+    }
+
+    /// <summary>The user's place for sun times, from the city list or one location fix.</summary>
+    public static SetSett.Model.SavedPlace? Home
+    {
+        get => Get<string?>(nameof(Home), null) is { } json ? SetSett.Storage.SetterJson.ReadPlace(json) : null;
+        set => Set(nameof(Home), value is null ? null : SetSett.Storage.SetterJson.WritePlace(value));
     }
 
     public static T? GetJson<T>(string key, JsonTypeInfo<T> typeInfo)

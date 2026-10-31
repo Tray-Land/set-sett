@@ -53,9 +53,6 @@ _ReSharper*/
 Generated\ Files/
 *_wpftmp.csproj
 
-# The app's own API keys; copy OAuth.resw.sample to create it.
-OAuth.resw
-
 # Build settings the csproj and build-msix-for-gh.ps1 rely on (no credentials).
 !Properties/PublishProfiles/win-x64.pubxml
 !Properties/PublishProfiles/win-arm64.pubxml
