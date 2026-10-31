@@ -161,6 +161,51 @@ function Get-GitHubRepository {
     return $Matches['repo']
 }
 
+# The identity the GitHub packages carry. "Associate App with the Store" gives a Store app's manifest
+# the Partner Center identity (Publisher="CN=<GUID>"), which the maintainer's certificate can't sign.
+# Such an app names the identity its GitHub releases use in the csproj: <GitHubIdentityName>,
+# <GitHubIdentityPublisher> and, optionally, <GitHubPublisherDisplayName>. The build swaps them into
+# the manifest (Set-ReleaseIdentity) and restores the manifest afterwards. Without them, the packages
+# keep the manifest's identity.
+function Get-ReleaseIdentity {
+    param(
+        [Parameter(Mandatory)]
+        [xml]$Manifest
+    )
+
+    $identity = $Manifest.Package.Identity
+    $manifestName = $identity.GetAttribute('Name')
+    $manifestPublisher = $identity.GetAttribute('Publisher')
+
+    $query = & dotnet msbuild $projectPath -getProperty:GitHubIdentityName -getProperty:GitHubIdentityPublisher -getProperty:GitHubPublisherDisplayName
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not evaluate $projectPath."
+    }
+    $properties = ($query | Out-String | ConvertFrom-Json).Properties
+    $name = "$($properties.GitHubIdentityName)".Trim()
+    $publisher = "$($properties.GitHubIdentityPublisher)".Trim()
+    $publisherDisplayName = "$($properties.GitHubPublisherDisplayName)".Trim()
+
+    if (-not $name -and -not $publisher) {
+        if ($manifestPublisher -match '^CN=[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$') {
+            throw "Package.appxmanifest has the Store identity ($manifestName, $manifestPublisher). Set <GitHubIdentityName> and <GitHubIdentityPublisher> in $($projectFile.Name) to the identity GitHub releases use (winui-tray-app skill, references/packaging.md)."
+        }
+        $name = $manifestName
+        $publisher = $manifestPublisher
+    }
+    elseif (-not $name -or -not $publisher) {
+        throw "Set both <GitHubIdentityName> and <GitHubIdentityPublisher> in $($projectFile.Name), or neither."
+    }
+
+    [pscustomobject]@{
+        Name = $name
+        Publisher = $publisher
+        PublisherDisplayName = $publisherDisplayName
+        Swapped = ($name -cne $manifestName -or $publisher -cne $manifestPublisher -or
+            ($publisherDisplayName -and $publisherDisplayName -cne $Manifest.Package.Properties.PublisherDisplayName))
+    }
+}
+
 function Read-ZipEntryText {
     param(
         [Parameter(Mandatory)]
@@ -209,8 +254,8 @@ function Get-FrameworkPackages {
     $packageFolders = @($assets.packageFolders.PSObject.Properties.Name)
 
     foreach ($build in $builds) {
-        # Microsoft.WindowsAppRuntime.2.msix or .1.6.msix; not the .Main, .DDLM or .Singleton packages.
-        $pattern = "^tools/MSIX/win10-$($build.Name)/Microsoft\.WindowsAppRuntime\.\d+(\.\d+)?\.msix$"
+        # Microsoft.WindowsAppRuntime.2.msix, .1.6.msix or .2-experimentalF.msix; not the .Main, .DDLM or .Singleton packages.
+        $pattern = "^tools/MSIX/win10-$($build.Name)/Microsoft\.WindowsAppRuntime\.\d+(\.\d+)?(-[A-Za-z0-9]+)?\.msix$"
         $sources = foreach ($library in $assets.libraries.PSObject.Properties) {
             foreach ($file in @(@($library.Value.files) -match $pattern)) {
                 $packageFolders |
@@ -329,6 +374,27 @@ function Add-AutoUpdateReference {
     $appInstaller.SetAttribute('File', 'Update.appinstaller')
     [void]$autoUpdate.AppendChild($appInstaller)
     [void]$properties.AppendChild($autoUpdate)
+    $document.Save($Path)
+}
+
+# Gives the release packages the GitHub identity from Get-ReleaseIdentity. Edits the manifest in
+# place; the caller restores the original bytes afterwards, so the committed manifest keeps the
+# Store identity.
+function Set-ReleaseIdentity {
+    param(
+        [Parameter(Mandatory)] [string]$Path,
+        [Parameter(Mandatory)] [object]$Identity
+    )
+
+    $document = New-Object System.Xml.XmlDocument
+    $document.PreserveWhitespace = $true
+    $document.Load($Path)
+    $root = $document.DocumentElement
+    $root['Identity'].SetAttribute('Name', $Identity.Name)
+    $root['Identity'].SetAttribute('Publisher', $Identity.Publisher)
+    if ($Identity.PublisherDisplayName) {
+        $root['Properties']['PublisherDisplayName'].InnerText = $Identity.PublisherDisplayName
+    }
     $document.Save($Path)
 }
 
@@ -568,7 +634,39 @@ function Assert-ReleaseReady {
         throw "A release for $Tag already exists on GitHub (possibly a draft). Delete it or bump the version."
     }
 
+    Assert-PublishedIdentity
+
     return $branch
+}
+
+# Installed copies only update to a package with the identity they were installed with, so every
+# release must keep the identity of the published one. Compares the build's identity with the feed
+# the stable link serves; a 404 means no published release has a feed yet.
+function Assert-PublishedIdentity {
+    $feedUri = "https://github.com/$repository/releases/latest/download/$feedName"
+    $download = Join-Path ([System.IO.Path]::GetTempPath()) "$([guid]::NewGuid()).appinstaller"
+    $feed = New-Object System.Xml.XmlDocument
+    try {
+        try {
+            Invoke-WebRequest -Uri $feedUri -OutFile $download -UseBasicParsing
+        }
+        catch {
+            if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) {
+                return
+            }
+            throw "Could not read the published feed $feedUri to compare identities ($($_.Exception.Message))."
+        }
+        $feed.Load($download)
+    }
+    finally {
+        Remove-Item -LiteralPath $download -Force -ErrorAction SilentlyContinue
+    }
+
+    $published = $feed.AppInstaller.MainBundle
+    if ($published.GetAttribute('Name') -cne $identityName -or $published.GetAttribute('Publisher') -cne $identityPublisher) {
+        throw "The published release is $($published.GetAttribute('Name')) ($($published.GetAttribute('Publisher'))), but this build would be $identityName ($identityPublisher), which installed copies can't update to. Set <GitHubIdentityName> and <GitHubIdentityPublisher> in $($projectFile.Name) to the published identity."
+    }
+    Write-Host "  The published release has the same identity ($identityName)."
 }
 
 function Invoke-GitHubMsixBuild {
@@ -645,9 +743,7 @@ try {
     $version = $versionMatch.Groups[1].Value
     $tag = Get-ReleaseTag -Version $version
     $versionedOutputDir = Join-Path $outputRoot "$version-gh"
-    $identity = ([xml]$manifestContent).Package.Identity
-    $identityName = $identity.Name
-    $identityPublisher = $identity.Publisher
+    $manifestXml = [xml]$manifestContent
     $feedName = "$appName.appinstaller"
     $bundleName = "${appName}_$($tag.Substring(1)).msixbundle"
     $repository = Get-GitHubRepository
@@ -683,7 +779,15 @@ try {
         throw "'$signCommand' was not found. It is defined in the maintainer's PowerShell profile; run this script from a pwsh session that loaded it, or pass -SkipRelease -NoSign to check the build only."
     }
 
+    # The feed and every package carry the release identity: for a Store app, its GitHub identity.
+    $releaseIdentity = Get-ReleaseIdentity -Manifest $manifestXml
+    $identityName = $releaseIdentity.Name
+    $identityPublisher = $releaseIdentity.Publisher
+
     Write-Host "Project: $appName ($projectPath), version $version"
+    if ($releaseIdentity.Swapped) {
+        Write-Host "Packaging as the GitHub identity $identityName ($identityPublisher); Package.appxmanifest keeps $($manifestXml.Package.Identity.GetAttribute('Name')) for the Store."
+    }
 
     # Check git/gh state before the (slow) build so problems surface immediately.
     if (-not $SkipRelease) {
@@ -707,9 +811,13 @@ try {
     New-AppInstallerFile -Path $feedPath -Repository $repository -BundleName $bundleName -FrameworkPackages $frameworkPackages
     Write-Host "Created App Installer feed $feedName for $repository ($(@($frameworkPackages).Count) framework package(s) listed)."
 
-    # The manifest only references Update.appinstaller for release builds; restore it afterwards.
+    # Only release builds get the GitHub identity and the Update.appinstaller reference; restore the
+    # manifest afterwards. If the script is killed here, run: git checkout Package.appxmanifest
     $originalManifest = [System.IO.File]::ReadAllBytes($manifestPath)
     try {
+        if ($releaseIdentity.Swapped) {
+            Set-ReleaseIdentity -Path $manifestPath -Identity $releaseIdentity
+        }
         Add-AutoUpdateReference -Path $manifestPath
         foreach ($build in $builds) {
             Invoke-GitHubMsixBuild -Build $build

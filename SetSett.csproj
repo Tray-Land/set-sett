@@ -95,6 +95,18 @@
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
   </PropertyGroup>
+  <!--
+    GitHub releases (build-msix-for-gh.ps1) carry this identity, the one the other Tray Land apps
+    use: the GUID winapp new generated and the publisher in D:\package-details.txt, which the release
+    certificate signs. Package.appxmanifest keeps the Store's identity once the app is associated with
+    the Store; the script swaps these in for the release build and restores the manifest afterwards.
+    Never change them after a GitHub release: installed copies only update to the same identity.
+  -->
+  <PropertyGroup Label="GitHub release identity">
+    <GitHubIdentityName>6F144D1B-BC21-4D24-A072-BB029933833C</GitHubIdentityName>
+    <GitHubIdentityPublisher>CN=Joseph Finney, O=Joseph Finney, L=Milwaukee, S=Wisconsin, C=US, PostalCode=53212</GitHubIdentityPublisher>
+    <GitHubPublisherDisplayName>JoeFinApps</GitHubPublisherDisplayName>
+  </PropertyGroup>
   <PropertyGroup>
     <!-- Idle footprint: no background GC thread, no PGO instrumentation tier, no EventSources in Release. -->
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
