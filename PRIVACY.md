@@ -33,10 +33,6 @@ Set Sett declares a few Windows capabilities. Each is used only on your device, 
 
 To start or stop a setter, Set Sett may check things like which apps are running, CPU activity, power or battery status, the connected Wi-Fi or wired network, and the time of day. It does this only for the conditions in setters you have turned on. The readings are used in memory to make a decision and are not recorded or sent anywhere.
 
-## Children
-
-Set Sett collects no personal information from anyone, including children.
-
 ## Changes to this policy
 
 If this policy changes, the new version will be published in this repository with an updated date. Because Set Sett has no network access, any future change that involved sending data would be a significant change and would be stated here first.
