@@ -69,7 +69,9 @@ winapp run --clean                          # same, starting from a clean first 
 dotnet test SetSett.Tests\SetSett.Tests.csproj
 ```
 
-GitHub releases come from `.\build-msix-for-gh.ps1`, run in a pwsh session that has the `sign-msix` signing function. It builds a signed x64 + ARM64 `.msixbundle` and an auto-updating `SetSett.appinstaller` feed, and saves them as a draft release. The packages use the GitHub identity in `SetSett.csproj`, not the Store's. After publishing the draft without changing its tag, run `.\build-msix-for-gh.ps1 -VerifyPublished`. To check the build without signing, run `.\build-msix-for-gh.ps1 -SkipRelease -NoSign`.
+The app project restores both `win-x64` and `win-arm64` runtimes so switching Visual Studio platforms or building a bundle does not leave a missing runtime target in the assets file.
+
+GitHub releases come from
 
 The solution has three projects:
 
