@@ -6,7 +6,10 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using SetSett.Model;
 using SetSett.Services;
 using SetSett.Settings;
+using SetSett.Storage;
 using SetSett.Text;
+using Windows.Storage.Pickers;
+using WinRT.Interop;
 using static SetSett.Views.EditorParts;
 using Setter = SetSett.Model.Setter;
 
@@ -29,6 +32,7 @@ internal sealed partial class SetterEditor : UserControl
         [DurationIndicator.None, DurationIndicator.Donut, DurationIndicator.HorizontalBar, DurationIndicator.VerticalBar];
 
     private readonly Action _onDeleted;
+    private readonly nint _windowHandle;
     private readonly StackPanel _indicator = new() { Spacing = 4 };
     private readonly StackPanel _looks = new() { Spacing = 4 };
     private readonly StackPanel _timerChoices = new() { Spacing = 4 };
@@ -44,9 +48,10 @@ internal sealed partial class SetterEditor : UserControl
     private bool _syncing;
     private Setter _setter;
 
-    public SetterEditor(Setter setter, Action onDeleted)
+    public SetterEditor(Setter setter, nint windowHandle, Action onDeleted)
     {
         _setter = setter;
+        _windowHandle = windowHandle;
         _onDeleted = onDeleted;
         _sliderTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         _sliderTimer.Interval = SliderSettle;
@@ -76,7 +81,7 @@ internal sealed partial class SetterEditor : UserControl
         root.Children.Add(PutBackCard());
         root.Children.Add(SectionTitle("Where it shows"));
         root.Children.Add(ShowCards());
-        root.Children.Add(DeleteButton());
+        root.Children.Add(FooterActions());
         Content = new ScrollViewer { Content = root, HorizontalScrollMode = ScrollMode.Disabled };
 
         BuildChanges();
@@ -688,8 +693,14 @@ internal sealed partial class SetterEditor : UserControl
         return link;
     }
 
-    private UIElement DeleteButton()
+    private UIElement FooterActions()
     {
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            Margin = new Thickness(0, 24, 0, 0),
+        };
         var confirm = new Button { Content = "Delete", Style = Style("AccentButtonStyle") };
         var flyoutContent = new StackPanel { Spacing = 12, MaxWidth = 280 };
         flyoutContent.Children.Add(new TextBlock
@@ -710,8 +721,84 @@ internal sealed partial class SetterEditor : UserControl
             _onDeleted();
         };
 
-        var button = new Button { Content = "Delete setter", Flyout = flyout, Margin = new Thickness(0, 24, 0, 0) };
-        AutomationProperties.SetName(button, "Delete setter");
-        return button;
+        var delete = new Button
+        {
+            Flyout = flyout,
+            Foreground = Brush("SystemFillColorCriticalBrush"),
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
+                Children =
+                {
+                    new FontIcon { Glyph = "", FontSize = 14 },
+                    new TextBlock { Text = "Delete setter" },
+                },
+            },
+        };
+        AutomationProperties.SetName(delete, "Delete setter");
+        actions.Children.Add(delete);
+
+        var export = new MenuFlyoutItem
+        {
+            Text = "Export .sett file",
+            Icon = new FontIcon { Glyph = "" },
+        };
+        export.Click += async (_, _) => await ExportAsync();
+
+        var more = new Button
+        {
+            Flyout = new MenuFlyout { Items = { export } },
+            Content = new FontIcon { Glyph = "", FontSize = 14 },
+            Width = 40,
+            Height = 32,
+        };
+        AutomationProperties.SetName(more, "More setter actions");
+        ToolTipService.SetToolTip(more, "More actions");
+        actions.Children.Add(more);
+        return actions;
+    }
+
+    private async Task ExportAsync()
+    {
+        FlushSlider();
+
+        var picker = new FileSavePicker
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+            SuggestedFileName = FileName(_setter.Name),
+            DefaultFileExtension = ".sett",
+        };
+        picker.FileTypeChoices.Add("Set Sett setter", [".sett"]);
+        InitializeWithWindow.Initialize(picker, _windowHandle);
+
+        try
+        {
+            if (await picker.PickSaveFileAsync() is not { } file)
+            {
+                return;
+            }
+
+            await File.WriteAllTextAsync(file.Path, SetterJson.WriteSetters([_setter]));
+        }
+        catch (Exception ex)
+        {
+            App.LogCrash(ex);
+            var dialog = new ContentDialog
+            {
+                Title = "Couldn't export setter",
+                Content = "Set Sett couldn't save the .sett file. Check the destination and try again.",
+                CloseButtonText = "OK",
+                XamlRoot = XamlRoot,
+            };
+            await dialog.ShowAsync();
+        }
+    }
+
+    private static string FileName(string name)
+    {
+        char[] invalid = Path.GetInvalidFileNameChars();
+        string safe = string.Concat(name.Select(c => invalid.Contains(c) ? '_' : c)).Trim().TrimEnd('.');
+        return string.IsNullOrWhiteSpace(safe) ? "setter" : safe;
     }
 }

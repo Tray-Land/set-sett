@@ -40,7 +40,14 @@ You build **setters**. A setter is:
 
 **The tray.** Click the Set Sett icon for the flyout. Right-click it to toggle click-to-start setters, open the setter editor, open Settings, or quit. A setter's own tray icon is its glyph: full with a bar underneath while it's on, faded while it's off. Click it to start or stop the setter. If it stops at a set time ("After a while", "At a time", or a length picked from its menu), its icon can show how much of the run is left instead: a donut around the glyph, or a bar under or beside it, that empties as time goes by. If the setter is click-to-start and stops after a while, right-clicking its icon also offers other lengths ("Start for 2 hr"), 15 min to 8 hr unless you pick your own in the editor. While it's on, the same menu makes it stop that long from now ("Stop in 30 min"). The menu can also disable the setter or open it in the editor.
 
-**Creating and editing.** Setters are built in their own window ("New setter" in the flyout or the tray menu), starting blank or from a template: *Keep awake while rendering*, *Dark mode at night*, *Screen stays on for an hour*, *Quiet hours*.
+**Creating and editing.** Setters are built in their own window ("New setter" in the flyout or the tray menu), starting blank or from a template: *Keep awake while rendering*, *Dark mode at night*, *Screen stays on for an hour*, *Quiet hours*. Every part of a template setter—settings and values, start and stop conditions, presentation, and tray icon behavior—is defined as JSON in `SetSett.Core\Data\setter-templates.json`; the app assigns the per-user setter and tray icon ids when a template is created.
+
+Use the editor footer's **More actions** menu to export one setter, or **Settings > Setter files**
+to export every setter, as a `.sett` JSON file. Opening or importing a `.sett` file brings Set Sett
+to Settings, shows what each setter changes and starts or stops on, and offers **Add all**,
+**Add selected**, or **Cancel**. You can also drop one or more `.sett` files anywhere on the
+editor's Settings page to start the same import review. Files written by older Set Sett versions
+that contain one raw setter remain importable.
 
 ![The setter editor](docs/editor.png)
 
@@ -79,7 +86,7 @@ The solution has three projects:
 - `SetSett.Core`: plain .NET with no Windows APIs. The setter model, conditions, the engine that starts and stops setters and puts settings back, the time-range rules behind the dial and week view, sun times, city search, and tray icon pixels.
 - `SetSett.Tests`: MSTest coverage of Core.
 
-To add a setting or a condition, see "How things are added today" in [docs/ROADMAP.md](docs/ROADMAP.md#how-things-are-added-today-tier-1-plugins).
+To add a setter template, edit `SetSett.Core\Data\setter-templates.json`; no C# factory is needed. To add a setting or a condition, see "How things are added today" in [docs/ROADMAP.md](docs/ROADMAP.md#how-things-are-added-today-tier-1-plugins).
 
 The city list (`Assets\Data\world_cities.csv`) comes from [TheJoeFin/SimpleSunriseSunset](https://github.com/TheJoeFin/SimpleSunriseSunset).
 

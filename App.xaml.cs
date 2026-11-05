@@ -2,9 +2,11 @@ using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.Windows.AppLifecycle;
 using SetSett.Model;
 using SetSett.Services;
 using SetSett.Views;
+using IFileActivatedEventArgs = Windows.ApplicationModel.Activation.IFileActivatedEventArgs;
 using WinUIEx;
 using Setter = SetSett.Model.Setter;
 
@@ -21,6 +23,7 @@ public partial class App : Application
 
     private const string MutexName = "Local\\SetSett_SingleInstance";
     private const string ShowEventName = "Local\\SetSett_ShowFlyout";
+    private const string InstanceKey = "SetSett";
     private const int MaxTooltipLength = 127; // NOTIFYICONDATA.szTip limit
     private const int MaxMenuSetters = 6;
 
@@ -35,12 +38,15 @@ public partial class App : Application
     private Mutex? _singleInstanceMutex;
     private EventWaitHandle? _showEvent;
     private RegisteredWaitHandle? _showWait;
+    private AppInstance? _appInstance;
     private TrayIcon? _trayIcon;
     private SetterTrayIcons? _setterIcons;
     private TrayFlyoutWindow? _flyout;
     private EditorWindow? _editor;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
+    private readonly TaskCompletionSource _hostReady =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public App()
     {
@@ -67,31 +73,44 @@ public partial class App : Application
         }
     }
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
+        AppActivationArguments? activation = CurrentActivation();
+        IReadOnlyList<string> settFiles = SettPaths(activation);
         _singleInstanceMutex = new Mutex(true, MutexName, out bool createdNew);
         if (!createdNew)
         {
-            // Another instance owns the tray icon: ask it to open its flyout, then quit.
-            try
-            {
-                // Let the running instance take the foreground when it shows its flyout.
-                Windows.Win32.PInvoke.AllowSetForegroundWindow(unchecked((uint)-1)); // ASFW_ANY
-                using EventWaitHandle existing = EventWaitHandle.OpenExisting(ShowEventName);
-                existing.Set();
-            }
-            catch
-            {
-                // The other instance may be shutting down; nothing to do.
-            }
-
             _singleInstanceMutex.Dispose();
             _singleInstanceMutex = null;
-            Exit();
+
+            if (settFiles.Count > 0 && activation is not null &&
+                RedirectedInstance() is { IsCurrent: false } running)
+            {
+                _ = RedirectActivationAsync(running, activation);
+            }
+            else
+            {
+                SignalExistingInstance();
+                Exit();
+            }
+
             return;
         }
 
         _dispatcher = DispatcherQueue.GetForCurrentThread();
+        try
+        {
+            _appInstance = AppInstance.FindOrRegisterForKey(InstanceKey);
+            if (_appInstance.IsCurrent)
+            {
+                _appInstance.Activated += OnRedirectedActivation;
+            }
+        }
+        catch (Exception ex)
+        {
+            LogCrash(ex);
+        }
+
         _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
         _showWait = ThreadPool.RegisterWaitForSingleObject(_showEvent,
             (_, _) => _dispatcher.TryEnqueue(ShowFlyout), null, Timeout.Infinite, executeOnlyOnce: false);
@@ -108,10 +127,10 @@ public partial class App : Application
         InitializeTrayIcon();
         _setterIcons = new SetterTrayIcons(ShowFlyout, id => ShowEditor(id), ExitApp);
         SetterHost.Changed += OnSettersChanged;
-        _ = SetterHost.StartAsync();
+        _ = StartSetterHostAsync(settFiles);
 
-        // First run: show where the app lives instead of launching into silence.
-        if (!SettingsService.HasLaunchedBefore)
+        // File activation opens the import review instead of the flyout.
+        if (settFiles.Count == 0 && !SettingsService.HasLaunchedBefore)
         {
             SettingsService.HasLaunchedBefore = true;
             ShowFlyout();
@@ -119,6 +138,120 @@ public partial class App : Application
         else
         {
             MemoryService.ReleaseIdle(StartupTrimDelay);
+        }
+    }
+
+    private static AppActivationArguments? CurrentActivation()
+    {
+        try
+        {
+            return AppInstance.GetCurrent().GetActivatedEventArgs();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static AppInstance? RedirectedInstance()
+    {
+        try
+        {
+            return AppInstance.FindOrRegisterForKey(InstanceKey);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static IReadOnlyList<string> SettPaths(AppActivationArguments? activation)
+    {
+        if (activation?.Kind != ExtendedActivationKind.File ||
+            activation.Data is not IFileActivatedEventArgs files)
+        {
+            return [];
+        }
+
+        return
+        [
+            .. files.Files
+                .Where(file => string.Equals(Path.GetExtension(file.Path), ".sett", StringComparison.OrdinalIgnoreCase))
+                .Select(file => file.Path)
+                .Where(path => !string.IsNullOrWhiteSpace(path)),
+        ];
+    }
+
+    private async Task StartSetterHostAsync(IReadOnlyList<string> settFiles)
+    {
+        await SetterHost.StartAsync();
+        _hostReady.TrySetResult();
+        await OpenSettFilesAsync(settFiles);
+    }
+
+    private async Task RedirectActivationAsync(AppInstance running, AppActivationArguments activation)
+    {
+        bool redirected = false;
+        try
+        {
+            await running.RedirectActivationToAsync(activation);
+            redirected = true;
+        }
+        catch (Exception ex)
+        {
+            LogCrash(ex);
+        }
+        finally
+        {
+            if (!redirected)
+            {
+                SignalExistingInstance();
+            }
+
+            Exit();
+        }
+    }
+
+    private static void SignalExistingInstance()
+    {
+        try
+        {
+            Windows.Win32.PInvoke.AllowSetForegroundWindow(unchecked((uint)-1)); // ASFW_ANY
+            using EventWaitHandle existing = EventWaitHandle.OpenExisting(ShowEventName);
+            existing.Set();
+        }
+        catch
+        {
+            // The other instance may be shutting down; nothing to do.
+        }
+    }
+
+    private void OnRedirectedActivation(object? sender, AppActivationArguments activation)
+    {
+        IReadOnlyList<string> settFiles = SettPaths(activation);
+        if (settFiles.Count > 0)
+        {
+            _dispatcher?.TryEnqueue(() => _ = OpenSettFilesAsync(settFiles));
+        }
+    }
+
+    private async Task OpenSettFilesAsync(IReadOnlyList<string> paths)
+    {
+        if (paths.Count == 0)
+        {
+            return;
+        }
+
+        await _hostReady.Task;
+        if (_isExiting)
+        {
+            return;
+        }
+
+        EditorWindow editor = OpenEditor();
+        foreach (string path in paths)
+        {
+            await editor.ImportSetterAsync(path);
         }
     }
 
@@ -296,6 +429,13 @@ public partial class App : Application
         await SetterHost.ShutdownAsync();
 
         _setterIcons?.Dispose();
+        if (_appInstance is not null)
+        {
+            _appInstance.Activated -= OnRedirectedActivation;
+            _appInstance.UnregisterKey();
+            _appInstance = null;
+        }
+
         if (_trayIcon is not null)
         {
             _trayIcon.IsVisible = false;

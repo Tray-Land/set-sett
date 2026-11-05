@@ -2,7 +2,9 @@
 <UserControl
     x:Class="SetSett.Views.SettingsView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    DragOver="SettingsView_DragOver"
+    Drop="SettingsView_Drop">
 
     <!--  Shared by the flyout (a page) and the editor window (footer link). No chrome of its own.  -->
     <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -73,6 +75,48 @@
                         Content="Location privacy settings" />
                 </StackPanel>
             </Border>
+
+            <StackPanel x:Name="SetterFilesSection">
+                <TextBlock
+                    Margin="0,20,0,8"
+                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                    Text="Setter files" />
+                <Border
+                    Padding="16,12"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Import or export setters" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="Drop .sett files here, or use Import to share one setter or move your complete collection."
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel
+                            Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="8">
+                            <Button
+                                AutomationProperties.Name="Import .sett file"
+                                Click="ImportSett_Click"
+                                Content="Import..." />
+                            <Button
+                                x:Name="ExportAllButton"
+                                AutomationProperties.Name="Export all setters"
+                                Click="ExportAll_Click"
+                                Content="Export all" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </StackPanel>
 
             <TextBlock
                 Margin="0,20,0,8"

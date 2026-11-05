@@ -2,6 +2,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using SetSett.Services;
 using Windows.ApplicationModel;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.Storage;
 
 namespace SetSett.Views;
 
@@ -12,15 +14,28 @@ namespace SetSett.Views;
 public sealed partial class SettingsView : UserControl
 {
     private bool _loading = true;
+    private readonly Func<Task>? _importAsync;
+    private readonly Func<string, Task>? _importFileAsync;
+    private readonly Func<Task>? _exportAllAsync;
 
     /// <param name="inFlyout">
     /// True in the flyout. Setting the place can raise a Windows consent prompt that takes focus and
     /// hides the flyout mid-request, so there it's read-only with a link to the editor's Settings page.
     /// </param>
-    public SettingsView(bool inFlyout = false)
+    public SettingsView(
+        bool inFlyout = false,
+        Func<Task>? importAsync = null,
+        Func<string, Task>? importFileAsync = null,
+        Func<Task>? exportAllAsync = null)
     {
+        _importAsync = importAsync;
+        _importFileAsync = importFileAsync;
+        _exportAllAsync = exportAllAsync;
         InitializeComponent();
+        AllowDrop = !inFlyout && _importFileAsync is not null;
         VersionText.Text = $"{App.DisplayName} {GetVersion()}";
+        SetterFilesSection.Visibility = inFlyout ? Visibility.Collapsed : Visibility.Visible;
+        ExportAllButton.IsEnabled = SetterHost.Setters.Count > 0;
         _ = LoadStartupStateAsync();
 
         if (inFlyout)
@@ -56,6 +71,102 @@ public sealed partial class SettingsView : UserControl
 
     private async void LocationPrivacy_Click(object sender, RoutedEventArgs e) =>
         await Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:privacy-location"));
+
+    private void SettingsView_DragOver(object sender, DragEventArgs e)
+    {
+        if (AllowDrop && e.DataView.Contains(StandardDataFormats.StorageItems))
+        {
+            e.AcceptedOperation = DataPackageOperation.Copy;
+            e.DragUIOverride.Caption = "Import setters";
+            e.DragUIOverride.IsCaptionVisible = true;
+            e.Handled = true;
+        }
+    }
+
+    private async void SettingsView_Drop(object sender, DragEventArgs e)
+    {
+        if (!AllowDrop || _importFileAsync is null ||
+            !e.DataView.Contains(StandardDataFormats.StorageItems))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        DragOperationDeferral deferral = e.GetDeferral();
+        IReadOnlyList<string> paths = [];
+        try
+        {
+            IReadOnlyList<IStorageItem> items = await e.DataView.GetStorageItemsAsync();
+            paths =
+            [
+                .. items.OfType<StorageFile>()
+                    .Where(file => string.Equals(
+                        file.FileType,
+                        ".sett",
+                        StringComparison.OrdinalIgnoreCase))
+                    .Select(file => file.Path)
+                    .Where(path => !string.IsNullOrWhiteSpace(path))
+                    .Distinct(StringComparer.OrdinalIgnoreCase),
+            ];
+        }
+        catch (Exception ex)
+        {
+            App.LogCrash(ex);
+            return;
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+
+        try
+        {
+            foreach (string path in paths)
+            {
+                await _importFileAsync(path);
+            }
+        }
+        catch (Exception ex)
+        {
+            App.LogCrash(ex);
+        }
+    }
+
+    private async void ImportSett_Click(object sender, RoutedEventArgs e)
+    {
+        if (_importAsync is null)
+        {
+            return;
+        }
+
+        ((Button)sender).IsEnabled = false;
+        try
+        {
+            await _importAsync();
+        }
+        finally
+        {
+            ((Button)sender).IsEnabled = true;
+        }
+    }
+
+    private async void ExportAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (_exportAllAsync is null)
+        {
+            return;
+        }
+
+        ((Button)sender).IsEnabled = false;
+        try
+        {
+            await _exportAllAsync();
+        }
+        finally
+        {
+            ((Button)sender).IsEnabled = SetterHost.Setters.Count > 0;
+        }
+    }
 
     private static string GetVersion()
     {
