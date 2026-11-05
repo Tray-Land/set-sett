@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using SetSett.Engine;
 using SetSett.Icons;
 using SetSett.Model;
@@ -45,6 +46,17 @@ public sealed class StorageAndTextTests
         Assert.AreEqual(setter.TrayIconId, back.TrayIconId);
         Assert.AreEqual(DurationIndicator.VerticalBar, back.Indicator);
         Assert.IsFalse(back.RunsDifferentlyThan(setter));
+
+        Setter standalone = SetterJson.ReadSetter(SetterJson.WriteSetter(setter));
+        Assert.IsTrue(standalone.Changes.SequenceEqual(setter.Changes));
+        Assert.IsTrue(standalone.When.SequenceEqual(setter.When));
+        Assert.IsTrue(standalone.Until.SequenceEqual(setter.Until));
+        Assert.IsTrue(standalone.TimerChoices.SequenceEqual(setter.TimerChoices));
+        Assert.AreEqual(setter.ActiveLook, standalone.ActiveLook);
+        Assert.AreEqual(setter.InactiveLook, standalone.InactiveLook);
+        Assert.AreEqual(setter.TrayIconId, standalone.TrayIconId);
+        Assert.AreEqual(setter.Indicator, standalone.Indicator);
+        Assert.IsFalse(standalone.RunsDifferentlyThan(setter));
     }
 
     [TestMethod]
@@ -165,8 +177,173 @@ public sealed class StorageAndTextTests
     {
         foreach (SetterTemplates.Template template in SetterTemplates.All)
         {
-            Assert.IsTrue(template.Create(100).CanRun, template.Name);
+            Setter first = template.Create(100);
+            Setter second = template.Create(100);
+
+            Assert.IsTrue(first.CanRun, template.Name);
+            Assert.AreNotEqual(first.Id, second.Id, template.Name);
+            Assert.AreNotEqual(template.Definition.Id, first.Id, template.Name);
         }
+    }
+
+    [TestMethod]
+    public void Templates_FullyDefineSettersAsJson()
+    {
+        SetterTemplates.Template template = SetterTemplates.Read("""
+            {
+              "version": 1,
+              "templates": [{
+                "name": "JSON setter",
+                "description": "Everything comes from JSON.",
+                "definition": {
+                  "id": "template.json",
+                  "name": "Defined in JSON",
+                  "glyph": "J",
+                  "changes": [
+                    {"settingId": "mute", "value": {"type": "onOff", "on": true}},
+                    {"settingId": "volume", "value": {"type": "number", "value": 35}},
+                    {"settingId": "theme.apps", "value": {"type": "choice", "id": "dark"}}
+                  ],
+                  "start": "Automatic",
+                  "enabled": false,
+                  "match": "Any",
+                  "when": [{"kind": "network", "network": "Office", "not": true}],
+                  "until": [
+                    {"kind": "elapsed", "minutes": 45, "not": false},
+                    {"kind": "clock", "at": "17:30:00", "not": false}
+                  ],
+                  "putBack": false,
+                  "showInFlyout": false,
+                  "showTrayIcon": true,
+                  "activeLook": {"glyph": "A", "color": "Blue", "dim": false, "bar": true},
+                  "inactiveLook": {"glyph": "I", "color": "Purple", "dim": true, "bar": false},
+                  "indicator": "VerticalBar",
+                  "trayIconId": 1,
+                  "timerChoices": [90, 15]
+                }
+              }]
+            }
+            """).Single();
+
+        Setter setter = template.Create(77);
+
+        Assert.AreEqual("JSON setter", template.Name);
+        Assert.AreEqual("Everything comes from JSON.", template.Description);
+        Assert.AreEqual("Defined in JSON", setter.Name);
+        Assert.AreEqual("J", setter.Glyph);
+        Assert.HasCount(3, setter.Changes);
+        Assert.IsTrue(setter.Changes[0].Value is OnOffValue { On: true });
+        Assert.IsTrue(setter.Changes[1].Value is NumberValue { Value: 35 });
+        Assert.IsTrue(setter.Changes[2].Value is ChoiceValue { Id: "dark" });
+        Assert.AreEqual(StartMode.Automatic, setter.Start);
+        Assert.IsFalse(setter.Enabled);
+        Assert.AreEqual(ConditionMatch.Any, setter.Match);
+        Assert.IsTrue(setter.When[0] is NetworkCondition { Network: "Office", Not: true });
+        Assert.IsTrue(setter.Until[0] is ElapsedCondition { Minutes: 45 });
+        Assert.IsTrue(setter.Until[1] is ClockCondition { At.Hour: 17, At.Minute: 30 });
+        Assert.IsFalse(setter.PutBack);
+        Assert.IsFalse(setter.ShowInFlyout);
+        Assert.IsTrue(setter.ShowTrayIcon);
+        Assert.AreEqual(new IconLook { Glyph = "A", Color = IconColor.Blue, Bar = true }, setter.ActiveLook);
+        Assert.AreEqual(new IconLook { Glyph = "I", Color = IconColor.Purple, Dim = true }, setter.InactiveLook);
+        Assert.AreEqual(DurationIndicator.VerticalBar, setter.Indicator);
+        Assert.AreEqual(77u, setter.TrayIconId);
+        CollectionAssert.AreEqual(new[] { 90, 15 }, setter.TimerChoices.ToArray());
+        Assert.AreEqual(32, setter.Id.Length);
+    }
+
+    [TestMethod]
+    public void TemplateFile_NewerVersionIsRefused()
+    {
+        Assert.ThrowsExactly<NotSupportedException>(
+            () => SetterTemplates.Read("""{"version": 99, "templates": []}"""));
+    }
+
+    [TestMethod]
+    public void Import_ValidatesAndAssignsFreshIdentity()
+    {
+        var volume = FakeSetting.Volume();
+        var catalog = new SettingCatalog([volume]);
+        Setter source = Setter.Create("Mute for a while", 88) with
+        {
+            Changes = [new SettingChange(SettingIds.Volume, new NumberValue(25))],
+            Until = [new ElapsedCondition(45)],
+        };
+
+        Setter imported = SetterImport.Read(SetterJson.WriteSetter(source), catalog);
+        Assert.IsNull(SetterImport.Problem(imported, catalog));
+        Setter copy = imported.NewCopy(101);
+        Assert.AreNotEqual(imported.Id, copy.Id);
+        Assert.AreEqual(101u, copy.TrayIconId);
+        Assert.AreEqual(
+            "Changes: Volume 25%.\nStarts: when you click it.\n" +
+            "Stops: when you click it again, or for 45 min.\n" +
+            "Afterwards: puts each setting back if it has not changed.",
+            SetterText.ImportSummary(copy, catalog));
+    }
+
+    [TestMethod]
+    public void Import_ReadsOneOrManyAndKeepsLegacySingleFiles()
+    {
+        var catalog = new SettingCatalog([FakeSetting.Volume()]);
+        Setter first = Setter.Create("First", 1) with
+        {
+            Changes = [new SettingChange(SettingIds.Volume, new NumberValue(25))],
+        };
+        Setter second = Setter.Create("Second", 2) with
+        {
+            Changes = [new SettingChange(SettingIds.Volume, new NumberValue(50))],
+        };
+
+        IReadOnlyList<Setter> legacy = SetterImport.ReadAll(SetterJson.WriteSetter(first), catalog);
+        IReadOnlyList<Setter> single = SetterImport.ReadAll(SetterJson.WriteSetters([first]), catalog);
+        IReadOnlyList<Setter> many = SetterImport.ReadAll(SetterJson.WriteSetters([first, second]), catalog);
+
+        Assert.HasCount(1, legacy);
+        Assert.HasCount(1, single);
+        Assert.HasCount(2, many);
+        Assert.AreEqual("First", many[0].Name);
+        Assert.AreEqual("Second", many[1].Name);
+        Assert.ThrowsExactly<JsonException>(() => SetterImport.Read(SetterJson.WriteSetters([first, second]), catalog));
+    }
+
+    [TestMethod]
+    public void Import_RejectsEmptyBundlesAndAnyInvalidSetter()
+    {
+        var catalog = new SettingCatalog([FakeSetting.Volume()]);
+        Setter valid = Setter.Create("Valid", 1) with
+        {
+            Changes = [new SettingChange(SettingIds.Volume, new NumberValue(25))],
+        };
+        Setter invalid = Setter.Create("Invalid", 2) with
+        {
+            Changes = [new SettingChange("future.setting", new OnOffValue(true))],
+        };
+
+        Assert.ThrowsExactly<JsonException>(() => SetterImport.ReadAll(SetterJson.WriteSetters([]), catalog));
+        StringAssert.Contains(
+            Assert.ThrowsExactly<JsonException>(() => SetterImport.ReadAll(
+                SetterJson.WriteSetters([valid, invalid]), catalog)).Message,
+            "does not know");
+    }
+
+    [TestMethod]
+    public void Import_RejectsUnknownSettingsAndStopConditionsUsedToStart()
+    {
+        var catalog = new SettingCatalog([FakeSetting.Volume()]);
+        Setter unknown = Setter.Create("Unknown", 88) with
+        {
+            Changes = [new SettingChange("future.setting", new OnOffValue(true))],
+        };
+        Setter badStart = Setter.Create("Nope", 89) with
+        {
+            Changes = [new SettingChange(SettingIds.Volume, new NumberValue(25))],
+            Start = StartMode.Automatic,
+            When = [new ElapsedCondition(30)],
+        };
+
+        StringAssert.Contains(SetterImport.Problem(unknown, catalog)!, "does not know");
+        StringAssert.Contains(SetterImport.Problem(badStart, catalog)!, "cannot be used to start");
     }
 
     [TestMethod]

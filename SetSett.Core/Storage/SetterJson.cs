@@ -11,6 +11,9 @@ public sealed record SetterFile(int Version, IReadOnlyList<Setter> Setters);
 /// <summary>state.json: what's running and the snapshots to put back (<see cref="RunState"/>).</summary>
 public sealed record RunStateFile(int Version, RunState State);
 
+/// <summary>Versioned definitions for the editor's ready-made setters.</summary>
+public sealed record SetterTemplateFile(int Version, IReadOnlyList<SetterTemplates.Template> Templates);
+
 /// <summary>
 /// Reading and writing Set Sett's files through a source-generated context (trim-safe, no
 /// reflection). Each Read throws JsonException (or NotSupportedException for an unknown kind or a
@@ -19,6 +22,13 @@ public sealed record RunStateFile(int Version, RunState State);
 public static class SetterJson
 {
     public const int Version = 1;
+
+    public static string WriteSetter(Setter setter) =>
+        JsonSerializer.Serialize(setter, SetterJsonContext.Default.Setter);
+
+    public static Setter ReadSetter(string json) =>
+        JsonSerializer.Deserialize(json, SetterJsonContext.Default.Setter)
+            ?? throw new JsonException("Empty setter file.");
 
     public static string WriteSetters(IReadOnlyList<Setter> setters) =>
         JsonSerializer.Serialize(new SetterFile(Version, setters), SetterJsonContext.Default.SetterFile);
@@ -40,6 +50,14 @@ public static class SetterJson
             ?? throw new JsonException("Empty state file.");
         CheckVersion(file.Version);
         return file.State ?? RunState.Empty;
+    }
+
+    public static IReadOnlyList<SetterTemplates.Template> ReadTemplates(string json)
+    {
+        SetterTemplateFile file = JsonSerializer.Deserialize(json, SetterJsonContext.Default.SetterTemplateFile)
+            ?? throw new JsonException("Empty setter template file.");
+        CheckVersion(file.Version);
+        return file.Templates ?? [];
     }
 
     public static string WritePlace(SavedPlace place) => JsonSerializer.Serialize(place, SetterJsonContext.Default.SavedPlace);
@@ -72,6 +90,8 @@ public static class SetterJson
     UseStringEnumConverter = true,
     IgnoreReadOnlyProperties = true)]
 [JsonSerializable(typeof(SetterFile))]
+[JsonSerializable(typeof(Setter))]
 [JsonSerializable(typeof(RunStateFile))]
+[JsonSerializable(typeof(SetterTemplateFile))]
 [JsonSerializable(typeof(SavedPlace))]
 public partial class SetterJsonContext : JsonSerializerContext;

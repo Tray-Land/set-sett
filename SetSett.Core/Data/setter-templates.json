@@ -1,0 +1,213 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "name": "Keep awake while rendering",
+      "description": "Click before a long render or build. Stops once the CPU has been quiet for 5 minutes.",
+      "definition": {
+        "id": "template.keep-awake",
+        "name": "Keep awake while busy",
+        "glyph": "\uE9F5",
+        "changes": [
+          {
+            "settingId": "keepawake",
+            "value": {
+              "type": "choice",
+              "id": "system"
+            }
+          }
+        ],
+        "start": "Manual",
+        "enabled": true,
+        "match": "All",
+        "when": [],
+        "until": [
+          {
+            "kind": "cpuQuiet",
+            "percent": 10,
+            "minutes": 5,
+            "not": false
+          }
+        ],
+        "putBack": true,
+        "showInFlyout": true,
+        "showTrayIcon": false,
+        "activeLook": {
+          "glyph": null,
+          "color": "Taskbar",
+          "dim": false,
+          "bar": true
+        },
+        "inactiveLook": {
+          "glyph": null,
+          "color": "Taskbar",
+          "dim": true,
+          "bar": false
+        },
+        "indicator": "None",
+        "trayIconId": 0,
+        "timerChoices": [ 15, 30, 60, 120, 240, 360, 480 ]
+      }
+    },
+    {
+      "name": "Dark mode at night",
+      "description": "Switches Windows and apps to dark between sunset and sunrise.",
+      "definition": {
+        "id": "template.dark-at-night",
+        "name": "Dark at night",
+        "glyph": "\uE708",
+        "changes": [
+          {
+            "settingId": "theme.windows",
+            "value": {
+              "type": "choice",
+              "id": "dark"
+            }
+          },
+          {
+            "settingId": "theme.apps",
+            "value": {
+              "type": "choice",
+              "id": "dark"
+            }
+          }
+        ],
+        "start": "Automatic",
+        "enabled": true,
+        "match": "All",
+        "when": [
+          {
+            "kind": "sun",
+            "phase": "Night",
+            "sunriseOffsetMinutes": 0,
+            "sunsetOffsetMinutes": 0,
+            "not": false
+          }
+        ],
+        "until": [],
+        "putBack": true,
+        "showInFlyout": true,
+        "showTrayIcon": false,
+        "activeLook": {
+          "glyph": null,
+          "color": "Taskbar",
+          "dim": false,
+          "bar": true
+        },
+        "inactiveLook": {
+          "glyph": null,
+          "color": "Taskbar",
+          "dim": true,
+          "bar": false
+        },
+        "indicator": "None",
+        "trayIconId": 0,
+        "timerChoices": [ 15, 30, 60, 120, 240, 360, 480 ]
+      }
+    },
+    {
+      "name": "Screen stays on for an hour",
+      "description": "Click to stop the screen turning off for the next hour.",
+      "definition": {
+        "id": "template.screen-on-hour",
+        "name": "Screen on for 1 hr",
+        "glyph": "\uE7F4",
+        "changes": [
+          {
+            "settingId": "screen.off.ac",
+            "value": {
+              "type": "number",
+              "value": 0
+            }
+          },
+          {
+            "settingId": "screen.off.dc",
+            "value": {
+              "type": "number",
+              "value": 0
+            }
+          }
+        ],
+        "start": "Manual",
+        "enabled": true,
+        "match": "All",
+        "when": [],
+        "until": [
+          {
+            "kind": "elapsed",
+            "minutes": 60,
+            "not": false
+          }
+        ],
+        "putBack": true,
+        "showInFlyout": true,
+        "showTrayIcon": false,
+        "activeLook": {
+          "glyph": null,
+          "color": "Taskbar",
+          "dim": false,
+          "bar": true
+        },
+        "inactiveLook": {
+          "glyph": null,
+          "color": "Taskbar",
+          "dim": true,
+          "bar": false
+        },
+        "indicator": "None",
+        "trayIconId": 0,
+        "timerChoices": [ 15, 30, 60, 120, 240, 360, 480 ]
+      }
+    },
+    {
+      "name": "Quiet hours",
+      "description": "Mutes the speakers from 10 PM to 7 AM every day.",
+      "definition": {
+        "id": "template.quiet-hours",
+        "name": "Quiet hours",
+        "glyph": "\uE74F",
+        "changes": [
+          {
+            "settingId": "mute",
+            "value": {
+              "type": "onOff",
+              "on": true
+            }
+          }
+        ],
+        "start": "Automatic",
+        "enabled": true,
+        "match": "All",
+        "when": [
+          {
+            "kind": "time",
+            "from": "22:00:00",
+            "to": "07:00:00",
+            "days": "Every",
+            "perDay": [],
+            "not": false
+          }
+        ],
+        "until": [],
+        "putBack": true,
+        "showInFlyout": true,
+        "showTrayIcon": false,
+        "activeLook": {
+          "glyph": null,
+          "color": "Taskbar",
+          "dim": false,
+          "bar": true
+        },
+        "inactiveLook": {
+          "glyph": null,
+          "color": "Taskbar",
+          "dim": true,
+          "bar": false
+        },
+        "indicator": "None",
+        "trayIconId": 0,
+        "timerChoices": [ 15, 30, 60, 120, 240, 360, 480 ]
+      }
+    }
+  ]
+}

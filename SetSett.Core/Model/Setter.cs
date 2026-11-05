@@ -180,6 +180,19 @@ public sealed record Setter
         TrayIconId = trayIconId,
     };
 
+    /// <summary>Makes an independent copy with identities that belong to this app installation.</summary>
+    public Setter NewCopy(uint trayIconId) => this with
+    {
+        Id = Guid.NewGuid().ToString("N"),
+        TrayIconId = trayIconId,
+        Changes = [.. Changes],
+        When = [.. When],
+        Until = [.. Until],
+        TimerChoices = [.. TimerChoices],
+        ActiveLook = ActiveLook with { },
+        InactiveLook = InactiveLook with { },
+    };
+
     /// <summary>
     /// True when an edit changes what the setter sets or when it starts. A running setter is
     /// stopped then (putting things back), so it never holds settings under a definition that no

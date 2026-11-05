@@ -1,55 +1,32 @@
+using System.Reflection;
+using SetSett.Storage;
+
 namespace SetSett.Model;
 
 /// <summary>Ready-made setters for the editor's "New setter" menu, so a first setter is two clicks away.</summary>
 public static class SetterTemplates
 {
-    public sealed record Template(string Name, string Description, Func<uint, Setter> Create);
+    private const string ResourceName = "SetSett.Data.setter-templates.json";
 
-    public static readonly IReadOnlyList<Template> All =
-    [
-        new("Keep awake while rendering",
-            "Click before a long render or build. Stops once the CPU has been quiet for 5 minutes.",
-            id => Setter.Create("Keep awake while busy", id) with
-            {
-                Glyph = Glyphs.Processing,
-                Changes = [new SettingChange(SettingIds.KeepAwake, new ChoiceValue(SettingIds.AwakeSystem))],
-                Until = [new CpuQuietCondition(10, 5)],
-            }),
-        new("Dark mode at night",
-            "Switches Windows and apps to dark between sunset and sunrise.",
-            id => Setter.Create("Dark at night", id) with
-            {
-                Glyph = Glyphs.Moon,
-                Start = StartMode.Automatic,
-                Changes =
-                [
-                    new SettingChange(SettingIds.WindowsTheme, new ChoiceValue(SettingIds.Dark)),
-                    new SettingChange(SettingIds.AppsTheme, new ChoiceValue(SettingIds.Dark)),
-                ],
-                When = [new SunCondition(SunPhase.Night)],
-            }),
-        new("Screen stays on for an hour",
-            "Click to stop the screen turning off for the next hour.",
-            id => Setter.Create("Screen on for 1 hr", id) with
-            {
-                Glyph = Glyphs.Monitor,
-                Changes =
-                [
-                    new SettingChange(SettingIds.ScreenOffPluggedIn, new NumberValue(0)),
-                    new SettingChange(SettingIds.ScreenOffOnBattery, new NumberValue(0)),
-                ],
-                Until = [new ElapsedCondition(60)],
-            }),
-        new("Quiet hours",
-            "Mutes the speakers from 10 PM to 7 AM every day.",
-            id => Setter.Create("Quiet hours", id) with
-            {
-                Glyph = Glyphs.Mute,
-                Start = StartMode.Automatic,
-                Changes = [new SettingChange(SettingIds.Mute, new OnOffValue(true))],
-                When = [new TimeWindowCondition(new TimeOnly(22, 0), new TimeOnly(7, 0), WeekDays.Every)],
-            }),
-    ];
+    public sealed record Template(string Name, string Description, Setter Definition)
+    {
+        /// <summary>Creates an independent setter with the per-user identity fields assigned.</summary>
+        public Setter Create(uint trayIconId) => Definition.NewCopy(trayIconId);
+    }
+
+    public static readonly IReadOnlyList<Template> All = Load();
+
+    /// <summary>Reads a versioned template catalog, using the same trim-safe JSON contract as setters.json.</summary>
+    public static IReadOnlyList<Template> Read(string json) => SetterJson.ReadTemplates(json);
+
+    private static IReadOnlyList<Template> Load()
+    {
+        Assembly assembly = typeof(SetterTemplates).Assembly;
+        using Stream stream = assembly.GetManifestResourceStream(ResourceName)
+            ?? throw new InvalidOperationException($"Embedded setter templates '{ResourceName}' were not found.");
+        using var reader = new StreamReader(stream);
+        return Read(reader.ReadToEnd());
+    }
 }
 
 /// <summary>Segoe Fluent Icons glyphs offered in the editor's icon picker.</summary>

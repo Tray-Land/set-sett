@@ -12,4 +12,7 @@
     <Nullable>enable</Nullable>
     <IsTrimmable>true</IsTrimmable>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Data\setter-templates.json" LogicalName="SetSett.Data.setter-templates.json" />
+  </ItemGroup>
 </Project>

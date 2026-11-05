@@ -134,6 +134,23 @@ public static class SetterText
             return $"{(line.Indexes.Count > 1 ? s.Info.Name : s.Info.DisplayName)} {Value(s.Info, c.Value)}";
         }));
 
+    /// <summary>Plain-language import summary shown before a .sett file is added.</summary>
+    public static string ImportSummary(Setter setter, ISettingCatalog catalog)
+    {
+        string starts = setter.IsAutomatic ? When(setter) : "when you click it";
+        List<string> stops = setter.IsAutomatic
+            ? ["when its start conditions end"]
+            : ["when you click it again"];
+        stops.AddRange(setter.Until.Select(Until));
+
+        return $"Changes: {Changes(setter, catalog)}.\n" +
+               $"Starts: {starts}.\n" +
+               $"Stops: {string.Join(", or ", stops)}.\n" +
+               (setter.PutBack
+                   ? "Afterwards: puts each setting back if it has not changed."
+                   : "Afterwards: leaves the new setting values in place.");
+    }
+
     /// <summary>The flyout's second line for a setter: what it's doing now and until when.</summary>
     public static string Status(Setter setter, RunState state, SensorSnapshot now)
     {
