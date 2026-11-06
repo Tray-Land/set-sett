@@ -37,6 +37,9 @@ public sealed record SetterRun(string SetterId, DateTime ActiveSinceUtc)
 /// </summary>
 public sealed record Claim(string SetterId, SettingValue Snapshot, SettingValue Applied);
 
+/// <summary>When a setter's latch was set, and whether the user set it by pausing the setter.</summary>
+public sealed record LatchInfo(DateTime SinceUtc, bool Paused);
+
 /// <summary>
 /// Everything Set Sett needs to pick up where it left off after a crash or a restart: which setters
 /// are running, which are waiting for their conditions to reset, and every claim on a setting. It is
@@ -50,9 +53,16 @@ public sealed record RunState
 
     /// <summary>
     /// Automatic setters that stopped (by a stop condition, or by the user) while their start
-    /// conditions still held. They wait for those conditions to end before they can start again.
+    /// conditions still held. They wait for those conditions to end before they can start again, unless
+    /// the user resumes one they paused.
     /// </summary>
     public IReadOnlyList<string> Latched { get; set; } = [];
+
+    /// <summary>
+    /// When each latch in <see cref="Latched"/> was set, and by whom. A latch saved by an older Set Sett
+    /// has no entry: it isn't a pause, and it clears only when Set Sett sees its conditions end.
+    /// </summary>
+    public IReadOnlyDictionary<string, LatchInfo> LatchDetails { get; set; } = new Dictionary<string, LatchInfo>();
 
     /// <summary>Per setting id, its claims from bottom (first) to top (most recent, the one in effect).</summary>
     public IReadOnlyDictionary<string, IReadOnlyList<Claim>> Claims { get; set; } = new Dictionary<string, IReadOnlyList<Claim>>();
@@ -62,6 +72,11 @@ public sealed record RunState
     public bool IsActive(string setterId) => RunOf(setterId) is not null;
 
     public bool IsLatched(string setterId) => Latched.Contains(setterId);
+
+    /// <summary>The user paused this setter, as opposed to it ending on one of its stop conditions.</summary>
+    public bool IsPaused(string setterId) => IsLatched(setterId) && LatchDetails.GetValueOrDefault(setterId)?.Paused == true;
+
+    public DateTime? LatchedSinceUtc(string setterId) => LatchDetails.GetValueOrDefault(setterId)?.SinceUtc;
 
     public IReadOnlyList<Claim> ClaimsOn(string settingId) => Claims.GetValueOrDefault(settingId) ?? [];
 
@@ -73,10 +88,26 @@ public sealed record RunState
 
     public RunState WithoutRun(string setterId) => this with { Active = [.. Active.Where(r => r.SetterId != setterId)] };
 
+    public RunState WithLatch(string setterId, DateTime sinceUtc, bool paused = false) => this with
+    {
+        Latched = Latched.Contains(setterId) ? Latched : [.. Latched, setterId],
+        LatchDetails = new Dictionary<string, LatchInfo>(LatchDetails) { [setterId] = new LatchInfo(sinceUtc, paused) },
+    };
+
     // Returns this instance when nothing changes, so callers can skip a save.
-    public RunState WithLatch(string setterId, bool latched) => Latched.Contains(setterId) == latched
-        ? this
-        : this with { Latched = latched ? [.. Latched, setterId] : [.. Latched.Where(id => id != setterId)] };
+    public RunState WithoutLatch(string setterId)
+    {
+        if (!Latched.Contains(setterId) && !LatchDetails.ContainsKey(setterId))
+        {
+            return this;
+        }
+
+        var details = new Dictionary<string, LatchInfo>(LatchDetails);
+        details.Remove(setterId);
+        return this with { Latched = [.. Latched.Where(id => id != setterId)], LatchDetails = details };
+    }
+
+    public RunState WithoutLatches() => this with { Latched = [], LatchDetails = new Dictionary<string, LatchInfo>() };
 
     public RunState WithClaims(string settingId, IReadOnlyList<Claim> claims)
     {

@@ -15,6 +15,170 @@ public sealed class SetterEngineTests
         Until = [new ElapsedCondition(minutes)],
     };
 
+    private static Setter DarkNineToFive() => Setter.Create("Dark at work", 100) with
+    {
+        Start = StartMode.Automatic,
+        Changes = [new SettingChange(SettingIds.AppsTheme, Dark)],
+        When = [new TimeWindowCondition(new TimeOnly(9, 0), new TimeOnly(17, 0), WeekDays.Every)],
+    };
+
+    [TestMethod]
+    public async Task SleptThroughTheEnd_ValueStillSet_KeepsSnapshotAndDoesNotWrite()
+    {
+        var theme = FakeSetting.Theme();
+        var engine = new SetterEngine(new SettingCatalog([theme]), new MemoryStore());
+        Setter setter = DarkNineToFive();
+        await engine.StepAsync([setter], At.Local(2026, 11, 3, 16));
+
+        SensorSnapshot nextDay = At.Local(2026, 11, 4, 10);
+        await engine.StepAsync([setter], nextDay);
+
+        Assert.AreEqual(1, theme.Writes, "nothing flickers");
+        Assert.AreEqual(nextDay.UtcNow, engine.State.RunOf(setter.Id)!.ActiveSinceUtc, "a new run");
+
+        await engine.StepAsync([setter], At.Local(2026, 11, 4, 17));
+        Assert.AreEqual(Light, theme.Value, "still puts back the original value");
+    }
+
+    [TestMethod]
+    public async Task SleptThroughTheEnd_ValueChanged_SetsItAgainLikeEnteringAWindow()
+    {
+        var volume = FakeSetting.Volume(40);
+        var engine = new SetterEngine(new SettingCatalog([volume]), new MemoryStore());
+        Setter setter = DarkNineToFive() with { Changes = [new SettingChange(SettingIds.Volume, new NumberValue(20))] };
+        await engine.StepAsync([setter], At.Local(2026, 11, 3, 16));
+        volume.Value = new NumberValue(70); // the user turned it up before closing the lid
+
+        await engine.StepAsync([setter], At.Local(2026, 11, 4, 10));
+        Assert.AreEqual(new NumberValue(20), volume.Value);
+
+        await engine.StepAsync([setter], At.Local(2026, 11, 4, 17));
+        Assert.AreEqual(new NumberValue(70), volume.Value, "the value it found when this run began");
+    }
+
+    [TestMethod]
+    public async Task SleptThroughTheEnd_PutBackOff_WritesOnlyAChangedValue()
+    {
+        var theme = FakeSetting.Theme();
+        var engine = new SetterEngine(new SettingCatalog([theme]), new MemoryStore());
+        Setter setter = DarkNineToFive() with { PutBack = false };
+        await engine.StepAsync([setter], At.Local(2026, 11, 3, 16));
+
+        await engine.StepAsync([setter], At.Local(2026, 11, 4, 10));
+        Assert.AreEqual(1, theme.Writes);
+
+        theme.Value = Light;
+        await engine.StepAsync([setter], At.Local(2026, 11, 5, 10));
+        Assert.AreEqual(Dark, theme.Value);
+        Assert.IsEmpty(engine.State.Claims);
+    }
+
+    [TestMethod]
+    public async Task Recover_RunFromAnEarlierWindow_SetsAChangedValueAgain()
+    {
+        var theme = FakeSetting.Theme();
+        var store = new MemoryStore();
+        Setter setter = DarkNineToFive();
+        await new SetterEngine(new SettingCatalog([theme]), store).StepAsync([setter], At.Local(2026, 11, 3, 16));
+        theme.Value = Light;
+
+        var engine = new SetterEngine(new SettingCatalog([theme]), store);
+        await engine.RecoverAsync([setter], At.Local(2026, 11, 4, 10));
+
+        Assert.AreEqual(Dark, theme.Value);
+        Assert.IsTrue(engine.State.IsActive(setter.Id));
+    }
+
+    [TestMethod]
+    public async Task Pause_PutsBackAndWaits_ThenResumeStartsAgain()
+    {
+        var theme = FakeSetting.Theme();
+        var engine = new SetterEngine(new SettingCatalog([theme]), new MemoryStore());
+        Setter setter = DarkNineToFive();
+        SensorSnapshot start = At.Local(2026, 11, 3, 10);
+        await engine.StepAsync([setter], start);
+
+        await engine.PauseAsync(setter.Id, start);
+        Assert.AreEqual(Light, theme.Value);
+        Assert.IsTrue(engine.State.IsPaused(setter.Id));
+
+        await engine.StepAsync([setter], start.Plus(TimeSpan.FromHours(1)));
+        Assert.AreEqual(Light, theme.Value, "stays paused for the rest of the window");
+
+        await engine.ResumeAsync([setter], setter.Id, start.Plus(TimeSpan.FromHours(2)));
+        Assert.AreEqual(Dark, theme.Value);
+        Assert.IsFalse(engine.State.IsPaused(setter.Id));
+        Assert.IsTrue(engine.State.IsActive(setter.Id));
+    }
+
+    [TestMethod]
+    public async Task Resume_OutsideItsConditions_WaitsForThem()
+    {
+        var theme = FakeSetting.Theme();
+        var engine = new SetterEngine(new SettingCatalog([theme]), new MemoryStore());
+        Setter setter = DarkNineToFive();
+        SensorSnapshot start = At.Local(2026, 11, 3, 10);
+        await engine.StepAsync([setter], start);
+        await engine.PauseAsync(setter.Id, start);
+
+        await engine.ResumeAsync([setter], setter.Id, At.Local(2026, 11, 3, 18));
+
+        Assert.AreEqual(Light, theme.Value);
+        Assert.IsFalse(engine.State.IsActive(setter.Id));
+        Assert.IsFalse(engine.State.IsPaused(setter.Id));
+    }
+
+    [TestMethod]
+    public async Task Pause_EndsOnItsOwnAtTheNextWindow_EvenIfThePCSleptThroughTheGap()
+    {
+        var theme = FakeSetting.Theme();
+        var engine = new SetterEngine(new SettingCatalog([theme]), new MemoryStore());
+        Setter setter = DarkNineToFive();
+        SensorSnapshot start = At.Local(2026, 11, 3, 16);
+        await engine.StepAsync([setter], start);
+        await engine.PauseAsync(setter.Id, start);
+
+        await engine.StepAsync([setter], At.Local(2026, 11, 4, 10));
+
+        Assert.AreEqual(Dark, theme.Value);
+        Assert.IsTrue(engine.State.IsActive(setter.Id));
+        Assert.IsFalse(engine.State.IsLatched(setter.Id));
+    }
+
+    [TestMethod]
+    public async Task Pause_SurvivesARestartInTheSameWindow()
+    {
+        var theme = FakeSetting.Theme();
+        var store = new MemoryStore();
+        Setter setter = DarkNineToFive();
+        SensorSnapshot start = At.Local(2026, 11, 3, 10);
+        var first = new SetterEngine(new SettingCatalog([theme]), store);
+        await first.StepAsync([setter], start);
+        await first.PauseAsync(setter.Id, start);
+
+        var engine = new SetterEngine(new SettingCatalog([theme]), store);
+        await engine.RecoverAsync([setter], start.Plus(TimeSpan.FromHours(1)));
+
+        Assert.AreEqual(Light, theme.Value);
+        Assert.IsTrue(engine.State.IsPaused(setter.Id));
+    }
+
+    [TestMethod]
+    public async Task StopAll_ForgetsPauses()
+    {
+        var theme = FakeSetting.Theme();
+        var engine = new SetterEngine(new SettingCatalog([theme]), new MemoryStore());
+        Setter setter = DarkNineToFive();
+        SensorSnapshot start = At.Local(2026, 11, 3, 10);
+        await engine.StepAsync([setter], start);
+        await engine.PauseAsync(setter.Id, start);
+
+        await engine.StopAllAsync();
+
+        Assert.IsFalse(engine.State.IsLatched(setter.Id));
+        Assert.IsEmpty(engine.State.LatchDetails);
+    }
+
     [TestMethod]
     public async Task ManualTimer_SetsThenPutsBackWhenItExpires()
     {

@@ -215,7 +215,7 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
         }
 
         bool on = SetterHost.Run.IsActive(setterId);
-        if (!setter.IsAutomatic || on)
+        if (!setter.IsAutomatic || on || SetterHost.Run.IsPaused(setterId))
         {
             var toggle = new MenuFlyoutItem
             {
@@ -225,6 +225,12 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
             };
             toggle.Click += (_, _) => _ = SetterHost.ToggleAsync(setterId);
             menu.Items.Add(toggle);
+
+            if (setter.IsAutomatic)
+            {
+                toggle.Text = on ? "Pause" : "Resume";
+                toggle.Icon = new FontIcon { Glyph = on ? "" : "" };
+            }
 
             // Say how long a click runs it for, next to the other lengths below.
             if (!on && setter.HasTimer && setter.TimerMinutes is { } own)
@@ -239,9 +245,9 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
         }
 
         // Only enabled setters have an icon (Sync), so this is always Disable.
-        var pause = new MenuFlyoutItem { Text = "Disable", Icon = new FontIcon { Glyph = "" } };
-        pause.Click += (_, _) => SetterHost.SetEnabled(setterId, false);
-        menu.Items.Add(pause);
+        var disable = new MenuFlyoutItem { Text = "Disable", Icon = new FontIcon { Glyph = "" } };
+        disable.Click += (_, _) => SetterHost.SetEnabled(setterId, false);
+        menu.Items.Add(disable);
 
         var edit = new MenuFlyoutItem { Text = "Edit setter", Icon = new FontIcon { Glyph = "" } };
         edit.Click += (_, _) => editSetter(setterId);

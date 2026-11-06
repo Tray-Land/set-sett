@@ -128,8 +128,8 @@ internal static class SetterHost
     }
 
     /// <summary>
-    /// The flyout button or a setter's tray icon: starts or stops a manual setter; stops a running
-    /// automatic one until its conditions reset.
+    /// The flyout button or a setter's tray icon: starts or stops a manual setter; pauses a running
+    /// automatic one, or resumes a paused one.
     /// </summary>
     public static async Task ToggleAsync(string setterId)
     {
@@ -141,13 +141,24 @@ internal static class SetterHost
         await Gate.WaitAsync();
         try
         {
-            if (Run.IsActive(setterId))
+            if (!setter.IsAutomatic)
             {
-                await _engine.StopAsync(setterId, StopReason.User, latch: setter.IsAutomatic);
+                if (Run.IsActive(setterId))
+                {
+                    await _engine.StopAsync(setterId, StopReason.User);
+                }
+                else
+                {
+                    await _engine.StartAsync(setter, BuildSnapshot());
+                }
             }
-            else if (!setter.IsAutomatic)
+            else if (Run.IsActive(setterId))
             {
-                await _engine.StartAsync(setter, BuildSnapshot());
+                await _engine.PauseAsync(setterId, BuildSnapshot());
+            }
+            else if (Run.IsPaused(setterId))
+            {
+                await _engine.ResumeAsync(Setters, setterId, BuildSnapshot());
             }
         }
         catch (Exception ex)
@@ -190,7 +201,7 @@ internal static class SetterHost
         AfterEvaluate();
     }
 
-    /// <summary>Pauses or resumes an automatic setter (a paused one that's on stops and puts things back).</summary>
+    /// <summary>Enables or disables a setter (a disabled one that's on stops and puts things back).</summary>
     public static void SetEnabled(string setterId, bool enabled)
     {
         if (Find(setterId) is { } setter && setter.Enabled != enabled)

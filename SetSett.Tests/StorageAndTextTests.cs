@@ -68,14 +68,46 @@ public sealed class StorageAndTextTests
             {
                 TimerEndsUtc = new DateTime(2026, 10, 31, 19, 0, 0, DateTimeKind.Utc),
             })
-            .WithLatch("b", true);
+            .WithLatch("b", new DateTime(2026, 10, 31, 18, 0, 0, DateTimeKind.Utc), paused: true);
 
         RunState back = SetterJson.ReadState(SetterJson.WriteState(state));
 
         Assert.IsTrue(back.Active.SequenceEqual(state.Active));
         Assert.IsNull(back.RunOf("a")!.TimerEndsUtc);
         Assert.AreEqual("b", back.Latched.Single());
+        Assert.IsTrue(back.IsPaused("b"));
+        Assert.AreEqual(state.LatchedSinceUtc("b"), back.LatchedSinceUtc("b"));
         Assert.AreEqual(state.ClaimsOn(SettingIds.AppsTheme).Single(), back.ClaimsOn(SettingIds.AppsTheme).Single());
+    }
+
+    [TestMethod]
+    public void OlderStateFile_LatchHasNoDetailsAndIsNotAPause()
+    {
+        RunState state = SetterJson.ReadState("""{"version": 1, "state": {"latched": ["x"]}}""");
+
+        Assert.IsTrue(state.IsLatched("x"));
+        Assert.IsFalse(state.IsPaused("x"));
+        Assert.IsNull(state.LatchedSinceUtc("x"));
+        Assert.IsEmpty(state.WithoutLatch("x").Latched);
+    }
+
+    [TestMethod]
+    public void Status_SaysPausedOnlyForAPause()
+    {
+        Setter setter = Setter.Create("Dark", 100) with
+        {
+            Start = StartMode.Automatic,
+            Changes = [new SettingChange(SettingIds.AppsTheme, new ChoiceValue(SettingIds.Dark))],
+            When = [new SunCondition(SunPhase.Night)],
+        };
+        SensorSnapshot now = At.Local(2026, 11, 3, 22);
+
+        Assert.AreEqual(
+            "Paused · starts again between sunset and sunrise",
+            SetterText.Status(setter, RunState.Empty.WithLatch(setter.Id, now.UtcNow, paused: true), now));
+        Assert.AreEqual(
+            "Stopped until its conditions reset",
+            SetterText.Status(setter, RunState.Empty.WithLatch(setter.Id, now.UtcNow), now));
     }
 
     [TestMethod]

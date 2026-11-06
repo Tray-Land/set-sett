@@ -21,6 +21,10 @@ Set Sett puts a setting back only if it still has the value the setter gave it. 
 
 Numbers get one step of slack (volume 31 still counts as 30) because Windows stores some of them as fractions.
 
+## Only the clock can show a missed end
+
+If the PC is asleep or off when a setter's conditions end, Set Sett works it out afterwards from its time and sunrise/sunset conditions: if the conditions have begun again, the setter starts afresh, and a paused setter starts. It can't do this for sensors. If you leave the office network and come back while the PC is asleep, Set Sett can't know, so the setter carries on as the same run. A setter that starts when *any* of its conditions holds counts as ended only when all of its conditions are time or sun ones.
+
 ## If Set Sett isn't running, nothing gets put back
 
 Changes Windows keeps (theme, volume, radios, power-plan timeouts) stay set if Set Sett stops unexpectedly. Set Sett saves what to put back in `state.json` before every change, and recovers the next time it starts. It puts back settings whose timers ran out and drops any put-back you made obsolete by changing the setting yourself. Until then, a change can stay in place:

@@ -75,7 +75,11 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
 
         foreach (SetterTransition transition in transitions)
         {
-            if (transition.Start)
+            if (transition.Renew)
+            {
+                await RenewAsync(setters.First(s => s.Id == transition.SetterId), now);
+            }
+            else if (transition.Start)
             {
                 await StartAsync(setters.First(s => s.Id == transition.SetterId), now);
             }
@@ -116,17 +120,41 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
             return;
         }
 
-        State = State.WithRun(run).WithLatch(setter.Id, false);
+        State = State.WithRun(run).WithoutLatch(setter.Id);
         store.Save(State);
         await ApplyChangesAsync(setter, _ => true);
+    }
+
+    /// <summary>
+    /// A running setter's conditions ended and began again unseen, so this is a new run. A setting that
+    /// still has the setter's value keeps its snapshot and isn't written, so nothing flickers. One that
+    /// changed is set again, with what it reads now as the snapshot, the same as entering a window.
+    /// </summary>
+    private async Task RenewAsync(Setter setter, SensorSnapshot now)
+    {
+        State = State.WithRun(new SetterRun(setter.Id, now.UtcNow));
+        store.Save(State);
+        await ApplyChangesAsync(setter, _ => true, skipIfAlreadySet: true);
     }
 
     /// <summary>
     /// Stops a setter and puts back each setting it holds a claim on (from the claims, not its
     /// current definition, so a deleted or edited setter still puts back what it changed).
     /// </summary>
-    /// <param name="latch">For an automatic setter stopped by the user: wait for its conditions to end before it can start again.</param>
-    public async Task StopAsync(string setterId, StopReason reason, bool latch = false)
+    public Task StopAsync(string setterId, StopReason reason) => StopAsync(setterId, reason, pausedAtUtc: null);
+
+    /// <summary>The user paused an automatic setter: it stops until its conditions next begin, or until it's resumed.</summary>
+    public Task PauseAsync(string setterId, SensorSnapshot now) => StopAsync(setterId, StopReason.User, now.UtcNow);
+
+    /// <summary>Ends a pause, and starts the setter straight away if its conditions hold.</summary>
+    public Task<IReadOnlyList<SetterTransition>> ResumeAsync(IReadOnlyList<Setter> setters, string setterId, SensorSnapshot now)
+    {
+        State = State.WithoutLatch(setterId);
+        store.Save(State);
+        return StepAsync(setters, now);
+    }
+
+    private async Task StopAsync(string setterId, StopReason reason, DateTime? pausedAtUtc)
     {
         foreach (string settingId in State.SettingsClaimedBy(setterId).ToList())
         {
@@ -145,9 +173,9 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
         }
 
         State = State.WithoutRun(setterId);
-        if (latch)
+        if (pausedAtUtc is { } pausedAt)
         {
-            State = State.WithLatch(setterId, true);
+            State = State.WithLatch(setterId, pausedAt, paused: true);
         }
 
         store.Save(State);
@@ -161,11 +189,11 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
             await StopAsync(run.SetterId, StopReason.Exit);
         }
 
-        State = State with { Latched = [] };
+        State = State.WithoutLatches();
         store.Save(State);
     }
 
-    private async Task ApplyChangesAsync(Setter setter, Func<SettingChange, bool> include)
+    private async Task ApplyChangesAsync(Setter setter, Func<SettingChange, bool> include, bool skipIfAlreadySet = false)
     {
         // Unavailable family members wait until the loop ends: a PC without a battery has no
         // "on battery" member by design, which is fine when its sibling was applied.
@@ -200,11 +228,16 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
                 appliedFamilies.Add(available);
             }
 
+            SettingValue? current = setter.PutBack || skipIfAlreadySet ? await setting.ReadAsync() : null;
             if (setter.PutBack)
             {
-                SettingValue? current = await setting.ReadAsync();
                 State = ClaimLedger.Apply(State, change.SettingId, setter.Id, current, change.Value);
                 store.Save(State); // The snapshot is on disk before Windows changes.
+            }
+
+            if (skipIfAlreadySet && change.Value.Matches(current))
+            {
+                continue;
             }
 
             if (!await setting.WriteAsync(change.Value))

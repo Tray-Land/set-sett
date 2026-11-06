@@ -95,7 +95,7 @@ public sealed record SettingChange(string SettingId, SettingValue Value);
 /// never re-asserts a value while it runs, so a change the user makes by hand stands (and voids the
 /// put-back, see <c>ClaimLedger</c>).
 /// Properties are <c>set</c>, not <c>init</c>, on purpose: the JSON source generator fills a missing
-/// init-only property with default(T), so an older file without "enabled" would load as paused and
+/// init-only property with default(T), so an older file without "enabled" would load as disabled and
 /// one without "until" as null. With setters, a missing property keeps its initializer. Treat
 /// instances as immutable anyway and change them with <c>with</c>.
 /// </remarks>

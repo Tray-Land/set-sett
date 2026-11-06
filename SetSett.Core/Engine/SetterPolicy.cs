@@ -10,7 +10,7 @@ public enum StopReason
     /// <summary>An automatic setter's start conditions stopped holding.</summary>
     ConditionsEnded,
 
-    /// <summary>The user paused an automatic setter.</summary>
+    /// <summary>The user disabled the setter.</summary>
     Disabled,
 
     /// <summary>The setter was deleted.</summary>
@@ -26,7 +26,11 @@ public enum StopReason
     Exit
 }
 
-public readonly record struct SetterTransition(string SetterId, bool Start, StopReason Reason = StopReason.Until);
+/// <param name="Renew">
+/// With <paramref name="Start"/>: the setter is already running, but its conditions ended and began again
+/// without Set Sett seeing it (the PC slept through the gap), so its run starts afresh.
+/// </param>
+public readonly record struct SetterTransition(string SetterId, bool Start, StopReason Reason = StopReason.Until, bool Renew = false);
 
 /// <summary>
 /// Decides which setters start and stop given what the sensors see. Pure, so it's unit tested; the
@@ -36,6 +40,9 @@ public static class SetterPolicy
 {
     /// <summary>The longest the clock goes unchecked while any clock condition is watched (sleep, clock changes).</summary>
     public static readonly TimeSpan MaxClockWait = TimeSpan.FromHours(1);
+
+    // Years of daily windows. Only a window that never ends, such as 24 hours every day, gets near it.
+    private const int MaxReplayedBoundaries = 1000;
 
     /// <summary>Combines condition answers; null (unknown) only when the known answers can't decide.</summary>
     public static bool? Combine(IEnumerable<bool?> answers, ConditionMatch match)
@@ -72,9 +79,43 @@ public static class SetterPolicy
         setter.Until.Any(c => c.Evaluate(run.Context(now)) == true);
 
     /// <summary>
+    /// True when the start conditions stopped holding at a clock boundary after <paramref name="sinceUtc"/>.
+    /// Set Sett sees a boundary as it passes while the PC is awake, so this finds the ends it slept
+    /// through. Only the clock can be replayed: what a sensor saw back then is unknown, so a sensor
+    /// condition never proves an end.
+    /// </summary>
+    public static bool ConditionsEndedSince(Setter setter, DateTime sinceUtc, SensorSnapshot now)
+    {
+        List<Condition> clock = [.. setter.When.Where(c => c.CanStart && c.Sensors.HasFlag(Sensors.Clock))];
+        DateTime at = sinceUtc;
+        for (int i = 0; clock.Count > 0 && i < MaxReplayedBoundaries; i++)
+        {
+            var context = new ConditionContext(now with { UtcNow = at });
+            DateTime? next = clock.Select(c => c.NextChange(context)).Where(change => change > at).Min();
+            if (next is not { } boundary || boundary > now.UtcNow)
+            {
+                return false;
+            }
+
+            at = boundary;
+            context = new ConditionContext(now with { UtcNow = at });
+            bool? held = Combine(
+                setter.When.Where(c => c.CanStart).Select(c => c.Sensors.HasFlag(Sensors.Clock) ? c.Evaluate(context) : null),
+                setter.Match);
+            if (held == false)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// What should start and stop now. Setters act on edges: an automatic setter starts when its
-    /// conditions become true; one stopped early (latched) waits for them to end first. An unknown
-    /// answer changes nothing, so a sensor that hasn't reported yet never flips a setter.
+    /// conditions become true; one stopped early (latched) waits for them to end first. An end the PC
+    /// slept through still counts: a run from an earlier window starts afresh, and a latch clears. An
+    /// unknown answer changes nothing, so a sensor that hasn't reported yet never flips a setter.
     /// </summary>
     public static (IReadOnlyList<SetterTransition> Transitions, RunState State) Step(
         IReadOnlyList<Setter> setters, RunState state, SensorSnapshot now)
@@ -94,12 +135,13 @@ public static class SetterPolicy
         {
             if (!byId.ContainsKey(latched))
             {
-                state = state.WithLatch(latched, false);
+                state = state.WithoutLatch(latched);
             }
         }
 
         foreach (Setter setter in setters)
         {
+            bool? holds = setter.IsAutomatic ? StartConditionsHold(setter, now) : null;
             SetterRun? run = state.RunOf(setter.Id);
             if (run is not null)
             {
@@ -111,16 +153,21 @@ public static class SetterPolicy
                 {
                     transitions.Add(new(setter.Id, false, StopReason.Disabled));
                 }
-                else if (setter.IsAutomatic && StartConditionsHold(setter, now) == false)
+                else if (holds == false)
                 {
                     transitions.Add(new(setter.Id, false, StopReason.ConditionsEnded));
+                }
+                else if (holds == true && ConditionsEndedSince(setter, run.ActiveSinceUtc, now))
+                {
+                    // Before the stop conditions: a timer left over from the earlier window must not end this one.
+                    transitions.Add(new(setter.Id, true, Renew: true));
                 }
                 else if (StopConditionMet(setter, run, now))
                 {
                     transitions.Add(new(setter.Id, false, StopReason.Until));
                     if (setter.IsAutomatic)
                     {
-                        state = state.WithLatch(setter.Id, true);
+                        state = state.WithLatch(setter.Id, now.UtcNow);
                     }
                 }
 
@@ -134,19 +181,23 @@ public static class SetterPolicy
 
             if (!setter.Enabled || !setter.CanRun)
             {
-                state = state.WithLatch(setter.Id, false);
+                state = state.WithoutLatch(setter.Id);
                 continue;
             }
 
-            bool? holds = StartConditionsHold(setter, now);
             if (state.IsLatched(setter.Id))
             {
-                if (holds == false)
+                bool ended = holds == false ||
+                    (holds == true && state.LatchedSinceUtc(setter.Id) is { } since && ConditionsEndedSince(setter, since, now));
+                if (!ended)
                 {
-                    state = state.WithLatch(setter.Id, false);
+                    continue;
                 }
+
+                state = state.WithoutLatch(setter.Id);
             }
-            else if (holds == true)
+
+            if (holds == true)
             {
                 transitions.Add(new(setter.Id, true));
             }

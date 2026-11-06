@@ -171,6 +171,11 @@ public static class SetterText
 
         if (setter.IsAutomatic)
         {
+            if (state.IsPaused(setter.Id))
+            {
+                return "Paused · starts again " + When(setter);
+            }
+
             return state.IsLatched(setter.Id)
                 ? "Stopped until its conditions reset"
                 : "Starts " + When(setter);

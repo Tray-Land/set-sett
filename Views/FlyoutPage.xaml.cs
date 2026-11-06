@@ -13,8 +13,8 @@ namespace SetSett.Views;
 
 /// <summary>
 /// The flyout: one button per setter. A manual setter is a toggle (accent while on, like a Quick
-/// Settings tile); an automatic one shows what it's waiting for and "Stop for now"
-/// while it's on. Disabled setters aren't listed. Listens to <see cref="SetterHost.Changed"/> only while visible.
+/// Settings tile); an automatic one shows what it's waiting for, with a pause button while it's on and
+/// a resume button while it's paused. Disabled setters aren't listed. Listens to <see cref="SetterHost.Changed"/> only while visible.
 /// </summary>
 public sealed partial class FlyoutPage : Page, IDisposable
 {
@@ -176,19 +176,27 @@ public sealed partial class FlyoutPage : Page, IDisposable
         grid.Children.Add(content);
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Spacing = 4 };
-        if (on)
+        if (on || run.IsPaused(setter.Id))
         {
-            // A link in the accent fill's own text color: a default button keeps its pale fill and
-            // light text, which vanish against a light accent.
-            var stop = new HyperlinkButton
+            var pauseOrResume = new Button
             {
-                Content = new TextBlock { Text = "Stop for now", TextDecorations = Windows.UI.Text.TextDecorations.Underline },
-                Padding = new Thickness(8, 4, 8, 4),
+                Content = new FontIcon { Glyph = on ? "\uE769" : "\uE768", FontSize = 16 },
+                Width = 32,
+                Height = 32,
+                Padding = new Thickness(0),
+                Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+                BorderThickness = new Thickness(0),
             };
-            OnAccent(stop);
-            AutomationProperties.SetName(stop, $"Stop {Label(setter)} for now");
-            stop.Click += (_, _) => _ = SetterHost.ToggleAsync(setter.Id);
-            actions.Children.Add(stop);
+            if (on)
+            {
+                OnAccent(pauseOrResume);
+            }
+
+            string label = $"{(on ? "Pause" : "Resume")} {Label(setter)}";
+            AutomationProperties.SetName(pauseOrResume, label);
+            ToolTipService.SetToolTip(pauseOrResume, label);
+            pauseOrResume.Click += (_, _) => _ = SetterHost.ToggleAsync(setter.Id);
+            actions.Children.Add(pauseOrResume);
         }
 
         // No on/off switch: only enabled setters are listed, so turning it off would make the card
@@ -296,14 +304,13 @@ public sealed partial class FlyoutPage : Page, IDisposable
 
     private static Brush Brush(string key) => (Brush)Application.Current.Resources[key];
 
-    // Lightweight styling for a link on an accent fill. Every state is set: the defaults for hover and
-    // press are accent-colored text, which would disappear on the accent.
-    private static void OnAccent(HyperlinkButton link)
+    // Every foreground state is set because the default hover and press colors disappear on the accent.
+    private static void OnAccent(Button button)
     {
-        link.Resources["HyperlinkButtonForeground"] = Brush("TextOnAccentFillColorPrimaryBrush");
-        link.Resources["HyperlinkButtonForegroundPointerOver"] = Brush("TextOnAccentFillColorPrimaryBrush");
-        link.Resources["HyperlinkButtonForegroundPressed"] = Brush("TextOnAccentFillColorSecondaryBrush");
-        link.Resources["HyperlinkButtonForegroundDisabled"] = Brush("TextOnAccentFillColorDisabledBrush");
+        button.Resources["ButtonForeground"] = Brush("TextOnAccentFillColorPrimaryBrush");
+        button.Resources["ButtonForegroundPointerOver"] = Brush("TextOnAccentFillColorPrimaryBrush");
+        button.Resources["ButtonForegroundPressed"] = Brush("TextOnAccentFillColorSecondaryBrush");
+        button.Resources["ButtonForegroundDisabled"] = Brush("TextOnAccentFillColorDisabledBrush");
     }
 
     private void ShowProblems()
