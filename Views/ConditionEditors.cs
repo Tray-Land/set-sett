@@ -104,9 +104,9 @@ internal static class ConditionEditors
 
     // Controls with a header are taller than ones without, so a row lines them up along the bottom.
     // A child that set its own alignment keeps it.
-    private static StackPanel Horizontal(params FrameworkElement[] children)
+    private static WrapRow Horizontal(params FrameworkElement[] children)
     {
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var panel = new WrapRow();
         foreach (FrameworkElement child in children)
         {
             if (child.VerticalAlignment == VerticalAlignment.Stretch)
@@ -172,10 +172,7 @@ internal static class ConditionEditors
             ShowWeek();
         };
 
-        var modes = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        modes.Children.Add(sameEveryDay);
-        modes.Children.Add(eachDay);
-        panel.Children.Add(modes);
+        panel.Children.Add(Horizontal(sameEveryDay, eachDay));
         panel.Children.Add(body);
 
         if (c.IsSameEveryDay)

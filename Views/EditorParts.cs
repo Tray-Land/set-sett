@@ -14,6 +14,12 @@ internal static class EditorParts
     /// <summary>Where a row's text starts past its glyph slot. Radio buttons in a card use it too, so their labels line up with row titles.</summary>
     public const double GlyphGap = 12;
 
+    // The space a remove button takes on a row: 32 wide, less the 10 its margin hangs past the content edge.
+    private const double RemoveWidth = 22;
+
+    // Below this much room for a row's title and caption, its control moves under them.
+    private const double MinRowTextWidth = 160;
+
     public static Brush Brush(string key) => (Brush)Application.Current.Resources[key];
 
     public static Style Style(string key) => (Style)Application.Current.Resources[key];
@@ -104,8 +110,39 @@ internal static class EditorParts
             Grid.SetColumnSpan(below, nextColumn - 1);
             grid.Children.Add(below);
         }
+        else if (control is not null)
+        {
+            MoveUnderTextWhenNarrow(grid, control, nextColumn, remove is not null);
+        }
 
         return Card(grid);
+    }
+
+    // In a narrow window a wide control moves under the row's text, so the text keeps room to read.
+    // Decided from the row's width and the control's, neither of which moving changes, so it can't flip back and forth.
+    private static void MoveUnderTextWhenNarrow(Grid grid, FrameworkElement control, int columns, bool hasRemove)
+    {
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        int beside = Grid.GetColumn(control);
+        Thickness margin = control.Margin;
+        bool under = false;
+        grid.SizeChanged += (_, e) =>
+        {
+            double removeRoom = hasRemove ? RemoveWidth + GlyphGap : 0;
+            double textRoom = e.NewSize.Width - GlyphSlot - GlyphGap - control.ActualWidth - GlyphGap - removeRoom;
+            bool shouldBeUnder = textRoom < MinRowTextWidth;
+            if (shouldBeUnder == under)
+            {
+                return;
+            }
+
+            under = shouldBeUnder;
+            control.HorizontalAlignment = HorizontalAlignment.Left;
+            control.Margin = under ? new Thickness(0, 8, 0, 0) : margin;
+            Grid.SetRow(control, under ? 1 : 0);
+            Grid.SetColumn(control, under ? 1 : beside);
+            Grid.SetColumnSpan(control, under ? columns - 1 : 1);
+        };
     }
 
     /// <summary>

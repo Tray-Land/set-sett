@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using SetSett.Controls;
 using SetSett.Model;
 using SetSett.Services;
 using SetSett.Settings;
@@ -635,11 +636,11 @@ internal sealed partial class SetterEditor : UserControl
         [IconColor.Taskbar, IconColor.Accent, IconColor.Red, IconColor.Orange, IconColor.Yellow, IconColor.Green, IconColor.Blue, IconColor.Purple];
 
     // One state of the icon: a different glyph (or the setter's own), a color, dimmed or not, with the on bar or not.
-    private StackPanel LookRow(string title, Func<IconLook> get, Func<IconLook, Setter> apply)
+    private WrapRow LookRow(string title, Func<IconLook> get, Func<IconLook, Setter> apply)
     {
         void Change(Func<IconLook, IconLook> edit) => Commit(apply(edit(get())));
 
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var row = new WrapRow();
         row.Children.Add(new TextBlock { Text = title, Width = 96, VerticalAlignment = VerticalAlignment.Center });
 
         var glyph = new FontIcon { FontSize = 16, Width = GlyphSlot, Height = GlyphSlot }.Set(string.IsNullOrEmpty(get().Glyph) ? _setter.Glyph : get().Glyph!);
