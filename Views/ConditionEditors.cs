@@ -102,11 +102,18 @@ internal static class ConditionEditors
         _ => new TextBlock(),
     };
 
-    private static StackPanel Horizontal(params UIElement[] children)
+    // Controls with a header are taller than ones without, so a row lines them up along the bottom.
+    // A child that set its own alignment keeps it.
+    private static StackPanel Horizontal(params FrameworkElement[] children)
     {
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-        foreach (UIElement child in children)
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        foreach (FrameworkElement child in children)
         {
+            if (child.VerticalAlignment == VerticalAlignment.Stretch)
+            {
+                child.VerticalAlignment = VerticalAlignment.Bottom;
+            }
+
             panel.Children.Add(child);
         }
 
@@ -308,7 +315,6 @@ internal static class ConditionEditors
             set(c = c with { Check = (PowerCheck)i });
             percent.Visibility = c.Check is PowerCheck.BatteryBelow or PowerCheck.BatteryAtLeast ? Visibility.Visible : Visibility.Collapsed;
         }, "Power check");
-        check.VerticalAlignment = VerticalAlignment.Bottom;
         return Horizontal(check, percent);
     }
 
@@ -341,12 +347,11 @@ internal static class ConditionEditors
             Math.Max(0, Array.IndexOf(PlaceCondition.RadiusChoices, c.RadiusMeters)),
             i => set(c = c with { RadiusMeters = PlaceCondition.RadiusChoices[i] }),
             "Radius");
-        radius.VerticalAlignment = VerticalAlignment.Bottom;
         ComboBox modeBox = Combo(modes, mode, i => set(c = c with { Not = stop ? i == 0 : i == 1 }), "At or away", 120);
-        modeBox.VerticalAlignment = VerticalAlignment.Bottom;
         panel.Children.Add(Horizontal(modeBox, name, radius));
 
         TextBlock status = Caption(c.Center is null ? "Stand at the place and set it." : "Place set.");
+        status.VerticalAlignment = VerticalAlignment.Center;
         var here = new Button { Content = "Use where I am now" };
         here.Click += async (_, _) =>
         {

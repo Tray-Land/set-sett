@@ -137,14 +137,24 @@ internal sealed partial class SetterEditor : UserControl
 
     private UIElement Header()
     {
-        var grid = new Grid { ColumnSpacing = 12 };
+        // Labels in their own row, so the icon button and the name box share a top and a bottom edge.
+        var grid = new Grid { ColumnSpacing = 8, RowSpacing = 8, Margin = new Thickness(0, 0, 0, 12) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        var glyph = new FontIcon { FontSize = 20 }.Set(_setter.Glyph);
-        var iconButton = new DropDownButton { Content = glyph, Height = 40, VerticalAlignment = VerticalAlignment.Bottom };
+        grid.Children.Add(new TextBlock { Text = "Icon" });
+        var nameLabel = new TextBlock { Text = "Name" };
+        Grid.SetColumn(nameLabel, 1);
+        grid.Children.Add(nameLabel);
+
+        // A fixed box: Segoe UI Symbol's taller lines would otherwise make the header jump between setters.
+        var glyph = new FontIcon { FontSize = 16, Width = GlyphSlot, Height = GlyphSlot }.Set(_setter.Glyph);
+        var iconButton = new DropDownButton { Content = glyph, VerticalAlignment = VerticalAlignment.Stretch };
         AutomationProperties.SetName(iconButton, "Icon");
-        ToolTipService.SetToolTip(iconButton, "Icon");
+        ToolTipService.SetToolTip(iconButton, "Pick an icon");
+        Grid.SetRow(iconButton, 1);
         var flyout = new Flyout();
         var rows = new StackPanel { Spacing = 4 };
         StackPanel? row = null;
@@ -172,8 +182,10 @@ internal sealed partial class SetterEditor : UserControl
         iconButton.Flyout = flyout;
         grid.Children.Add(iconButton);
 
-        var name = new TextBox { Header = "Name", Text = _setter.Name, PlaceholderText = "Name this setter" };
+        var name = new TextBox { Text = _setter.Name, PlaceholderText = "Name this setter" };
+        AutomationProperties.SetName(name, "Name");
         name.TextChanged += (_, _) => Commit(_setter with { Name = name.Text });
+        Grid.SetRow(name, 1);
         Grid.SetColumn(name, 1);
         grid.Children.Add(name);
         return grid;
@@ -181,8 +193,7 @@ internal sealed partial class SetterEditor : UserControl
 
     private UIElement EnabledCard()
     {
-        var toggle = _enabledToggle = new ToggleSwitch { IsOn = _setter.Enabled, OnContent = "", OffContent = "", MinWidth = 0 };
-        AutomationProperties.SetName(toggle, "Enabled");
+        var toggle = _enabledToggle = Switch(_setter.Enabled, "Enabled");
         toggle.Toggled += (_, _) =>
         {
             if (!_syncing)
@@ -190,7 +201,7 @@ internal sealed partial class SetterEditor : UserControl
                 Commit(_setter with { Enabled = toggle.IsOn });
             }
         };
-        return Row("", "Enabled",
+        return Row(Glyphs.Power, "Enabled",
             Caption("Turn off to keep this setter without it running. It stops if it's on, and nothing starts it until you turn it back on."),
             toggle, remove: null);
     }
@@ -399,17 +410,21 @@ internal sealed partial class SetterEditor : UserControl
     {
         _start.Children.Clear();
 
+        // The left padding starts each label where a row's title starts: the circle fills the glyph slot.
+        var modePadding = new Thickness(GlyphGap, 6, 0, 0);
         var manual = new RadioButton
         {
             Content = "When I click it, in the flyout or on its own tray icon",
             GroupName = _radioGroup,
             IsChecked = !_setter.IsAutomatic,
+            Padding = modePadding,
         };
         var automatic = new RadioButton
         {
             Content = "Automatically, when something happens",
             GroupName = _radioGroup,
             IsChecked = _setter.IsAutomatic,
+            Padding = modePadding,
         };
         manual.Checked += (_, _) => SetStart(StartMode.Manual);
         automatic.Checked += (_, _) => SetStart(StartMode.Automatic);
@@ -514,8 +529,7 @@ internal sealed partial class SetterEditor : UserControl
 
     private UIElement PutBackCard()
     {
-        var toggle = new ToggleSwitch { IsOn = _setter.PutBack, OnContent = "", OffContent = "", MinWidth = 0 };
-        AutomationProperties.SetName(toggle, "Put settings back when it stops");
+        var toggle = Switch(_setter.PutBack, "Put settings back when it stops");
         toggle.Toggled += (_, _) => Commit(_setter with { PutBack = toggle.IsOn });
         return Row("", "Put settings back when it stops",
             Caption("Each setting goes back to what it was before this setter started. If you change one yourself in the meantime, your change stays."),
@@ -526,8 +540,7 @@ internal sealed partial class SetterEditor : UserControl
     {
         var panel = new StackPanel { Spacing = 4 };
 
-        var inFlyout = new ToggleSwitch { IsOn = _setter.ShowInFlyout, OnContent = "", OffContent = "", MinWidth = 0 };
-        AutomationProperties.SetName(inFlyout, "Show in the flyout");
+        var inFlyout = Switch(_setter.ShowInFlyout, "Show in the flyout");
         inFlyout.Toggled += (_, _) => Commit(_setter with { ShowInFlyout = inFlyout.IsOn });
         panel.Children.Add(Row("", "In the Set Sett flyout", Caption("A button in the list you get from the Set Sett tray icon."), inFlyout, remove: null));
 
@@ -549,8 +562,7 @@ internal sealed partial class SetterEditor : UserControl
                 SettingsService.HideTaskbarNote = true;
             }
         };
-        var trayIcon = new ToggleSwitch { IsOn = _setter.ShowTrayIcon, OnContent = "", OffContent = "", MinWidth = 0 };
-        AutomationProperties.SetName(trayIcon, "Give it its own tray icon");
+        var trayIcon = Switch(_setter.ShowTrayIcon, "Give it its own tray icon");
         trayIcon.Toggled += (_, _) =>
         {
             Commit(_setter with { ShowTrayIcon = trayIcon.IsOn });
@@ -625,7 +637,7 @@ internal sealed partial class SetterEditor : UserControl
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         row.Children.Add(new TextBlock { Text = title, Width = 96, VerticalAlignment = VerticalAlignment.Center });
 
-        var glyph = new FontIcon { FontSize = 18 }.Set(string.IsNullOrEmpty(get().Glyph) ? _setter.Glyph : get().Glyph!);
+        var glyph = new FontIcon { FontSize = 16, Width = GlyphSlot, Height = GlyphSlot }.Set(string.IsNullOrEmpty(get().Glyph) ? _setter.Glyph : get().Glyph!);
         var glyphButton = new DropDownButton { Content = glyph, Height = 32 };
         AutomationProperties.SetName(glyphButton, $"Icon {title.ToLowerInvariant()}");
         var flyout = new Flyout();

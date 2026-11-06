@@ -8,6 +8,12 @@ namespace SetSett.Views;
 /// <summary>Small layout helpers shared by the editor's code-built sections, so every card looks the same.</summary>
 internal static class EditorParts
 {
+    /// <summary>The slot every row's glyph sits in. Glyphs differ in width, so a fixed slot keeps the titles beside them in line.</summary>
+    public const double GlyphSlot = 20;
+
+    /// <summary>Where a row's text starts past its glyph slot. Radio buttons in a card use it too, so their labels line up with row titles.</summary>
+    public const double GlyphGap = 12;
+
     public static Brush Brush(string key) => (Brush)Application.Current.Resources[key];
 
     public static Style Style(string key) => (Style)Application.Current.Resources[key];
@@ -29,7 +35,7 @@ internal static class EditorParts
 
     public static Border Card(UIElement child) => new()
     {
-        Padding = new Thickness(16, 12, 12, 12),
+        Padding = new Thickness(16, 12, 16, 12),
         Background = Brush("CardBackgroundFillColorDefaultBrush"),
         BorderBrush = Brush("CardStrokeColorDefaultBrush"),
         BorderThickness = new Thickness(1),
@@ -40,15 +46,14 @@ internal static class EditorParts
     /// <summary>A card row: glyph, title and caption, then an optional control and a remove button.</summary>
     public static Border Row(string glyph, string title, TextBlock caption, FrameworkElement? control, Action? remove, FrameworkElement? below = null)
     {
-        var grid = new Grid { ColumnSpacing = 12, RowSpacing = 8 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        // Columns and rows exist only when used. A Grid still adds its spacing around empty ones, which
+        // would hold trailing controls off the card's edge and leave extra space under the text.
+        var grid = new Grid { ColumnSpacing = GlyphGap };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(GlyphSlot) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        var icon = new FontIcon { Glyph = glyph, FontSize = 18, VerticalAlignment = VerticalAlignment.Center };
+        var icon = new FontIcon { Glyph = glyph, FontSize = 18, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         grid.Children.Add(icon);
 
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
@@ -57,10 +62,12 @@ internal static class EditorParts
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);
 
+        int nextColumn = 2;
         if (control is not null)
         {
             control.VerticalAlignment = VerticalAlignment.Center;
-            Grid.SetColumn(control, 2);
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(control, nextColumn++);
             grid.Children.Add(control);
         }
 
@@ -75,23 +82,41 @@ internal static class EditorParts
                 Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
                 BorderThickness = new Thickness(0),
                 VerticalAlignment = VerticalAlignment.Center,
+
+                // The 12 px X sits centered in a 32 px button. This puts the X itself on the card's content edge, where switches end.
+                Margin = new Thickness(0, 0, -10, 0),
             };
             AutomationProperties.SetName(button, $"Remove {title}");
             ToolTipService.SetToolTip(button, "Remove");
             button.Click += (_, _) => remove();
-            Grid.SetColumn(button, 3);
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(button, nextColumn++);
             grid.Children.Add(button);
         }
 
         if (below is not null)
         {
+            // A margin, not RowSpacing, so a collapsed section takes no room at all.
+            below.Margin = new Thickness(0, 8, 0, 0);
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             Grid.SetRow(below, 1);
             Grid.SetColumn(below, 1);
-            Grid.SetColumnSpan(below, 3);
+            Grid.SetColumnSpan(below, nextColumn - 1);
             grid.Children.Add(below);
         }
 
         return Card(grid);
+    }
+
+    /// <summary>
+    /// A switch for a card row, with no On/Off text beside it. Its template keeps a fixed 12 px column
+    /// for that text even when empty, so pull that back to end the switch on the card's content edge.
+    /// </summary>
+    public static ToggleSwitch Switch(bool isOn, string name)
+    {
+        var toggle = new ToggleSwitch { IsOn = isOn, OnContent = "", OffContent = "", MinWidth = 0, Margin = new Thickness(0, 0, -12, 0) };
+        AutomationProperties.SetName(toggle, name);
+        return toggle;
     }
 
     public static ComboBox Combo(IEnumerable<string> items, int selected, Action<int> changed, string name, double minWidth = 160)
