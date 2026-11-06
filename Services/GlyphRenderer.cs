@@ -17,9 +17,8 @@ internal static partial class GlyphRenderer
     // Windows 10 has the older MDL2 font with the same code points.
     private static string Face => Environment.OSVersion.Version.Build >= 22000 ? "Segoe Fluent Icons" : "Segoe MDL2 Assets";
 
-    // Emoji glyphs come from Segoe UI Emoji so the tray icon's shape matches the one shown in the editor.
-    // GDI doesn't draw color layers, so it yields the glyph's single-color form, which is all a tray icon uses.
-    private static string FaceFor(string glyph) => SetSett.Model.Glyphs.IsEmoji(glyph) ? "Segoe UI Emoji" : Face;
+    // Emoji glyphs use the editor's font, so the tray icon's shape matches the one shown there.
+    private static string FaceFor(string glyph) => SetSett.Model.Glyphs.IsEmoji(glyph) ? GlyphFont.EmojiFace : Face;
 
     public static byte[]? Render(string glyph, int size)
     {

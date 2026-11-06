@@ -4,17 +4,23 @@ using SetSett.Model;
 
 namespace SetSett.Services;
 
-/// <summary>Sets a <see cref="FontIcon"/>'s glyph, switching to Segoe UI Emoji (the full-color emoji) for emoji glyphs.</summary>
+/// <summary>Sets a <see cref="FontIcon"/>'s glyph, switching to Segoe UI Symbol for emoji glyphs.</summary>
 internal static class GlyphFont
 {
-    private static readonly FontFamily Emoji = new("Segoe UI Emoji");
+    /// <summary>
+    /// The font for emoji glyphs, here and on tray icons. Segoe UI Emoji would draw in full color next
+    /// to the other, single-color icons: FontIcon has no IsColorFontEnabled and ignores U+FE0E.
+    /// Segoe UI Symbol's forms are single-color and follow the theme's text color.
+    /// </summary>
+    public const string EmojiFace = "Segoe UI Symbol";
+
+    private static readonly FontFamily Emoji = new(EmojiFace);
 
     public static FontIcon Set(this FontIcon icon, string glyph)
     {
         if (Glyphs.IsEmoji(glyph))
         {
-            // U+FE0E (text presentation) asks for the black-and-white form, which follows the theme's text color.
-            icon.Glyph = glyph + "︎";
+            icon.Glyph = glyph;
             icon.FontFamily = Emoji;
         }
         else
