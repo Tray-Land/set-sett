@@ -33,9 +33,10 @@ internal sealed partial class SetterEditor : UserControl
 
     private readonly Action _onDeleted;
     private readonly nint _windowHandle;
-    private readonly StackPanel _indicator = new() { Spacing = 4 };
-    private readonly StackPanel _looks = new() { Spacing = 4 };
-    private readonly StackPanel _timerChoices = new() { Spacing = 4 };
+    private readonly StackPanel _trayIconDetails = new() { Spacing = 16 };
+    private readonly StackPanel _indicator = new() { Spacing = 8 };
+    private readonly StackPanel _looks = new() { Spacing = 8 };
+    private readonly StackPanel _timerChoices = new() { Spacing = 8 };
     private readonly TextBlock _timerHint = Caption(
         "Add “After a while” under When it stops, and right-clicking this icon can start it for 15 min, 1 hr, or other lengths you pick.");
     private readonly StackPanel _changes = new() { Spacing = 4 };
@@ -574,7 +575,7 @@ internal sealed partial class SetterEditor : UserControl
             note.IsOpen = trayIcon.IsOn && !SettingsService.HideTaskbarNote;
         };
         panel.Children.Add(Row("", "Its own tray icon",
-            Caption("Click the icon to start or stop it. By default it's full with a bar while it's on and faded while it's off; change that below."),
+            Caption("Click the icon to start or stop it."),
             trayIcon, remove: null, below: TrayIconDetails(note)));
         return panel;
     }
@@ -582,27 +583,26 @@ internal sealed partial class SetterEditor : UserControl
     // Below the tray icon switch: the taskbar note, the time-left indicator, then the lengths a timer's menu offers.
     private StackPanel TrayIconDetails(InfoBar note)
     {
-        var panel = new StackPanel { Spacing = 8 };
+        StackPanel panel = _trayIconDetails;
         panel.Children.Add(note);
 
         _looks.Children.Add(new TextBlock { Text = "How the icon looks" });
         _looks.Children.Add(LookRow("When it's on", () => _setter.ActiveLook, look => _setter with { ActiveLook = look }));
         _looks.Children.Add(LookRow("When it's off", () => _setter.InactiveLook, look => _setter with { InactiveLook = look }));
-        _looks.Children.Add(Caption("Pick a different icon, a color, whether it's dimmed, and whether the small bar sits under it, for each state."));
+        _looks.Children.Add(Caption("Each state can have its own icon and color, be dimmed, and show a small bar under it. By default it's full with a bar while it's on and faded while it's off."));
         panel.Children.Add(_looks);
 
         var style = Combo(["None", "Donut", "Horizontal bar", "Vertical bar"], Math.Max(0, Array.IndexOf(Indicators, _setter.Indicator)),
             i => Commit(_setter with { Indicator = Indicators[i] }), "Time left on the icon", 160);
-        var styleRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        styleRow.Children.Add(new TextBlock { Text = "Time left on the icon", VerticalAlignment = VerticalAlignment.Center });
-        styleRow.Children.Add(style);
-        _indicator.Children.Add(styleRow);
+        style.HorizontalAlignment = HorizontalAlignment.Left;
+        _indicator.Children.Add(new TextBlock { Text = "Time left on the icon" });
+        _indicator.Children.Add(style);
         _indicator.Children.Add(Caption(
             "While it's on with a set end (“After a while” or “At a time” under When it stops, or a length from its menu), the icon shows how much is left in place of the bar."));
         panel.Children.Add(_indicator);
 
         _timerChoices.Children.Add(new TextBlock { Text = "Lengths in its menu" });
-        var chips = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, ItemWidth = 84, ItemHeight = 38 };
+        var chips = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, ItemWidth = 78, ItemHeight = 38 };
         IEnumerable<int> offered = TimerPalette.Union(_setter.TimerChoices.Where(m => m is > 0 and <= Setter.MaxTimerMinutes)).Order();
         foreach (int minutes in offered)
         {
@@ -696,8 +696,8 @@ internal sealed partial class SetterEditor : UserControl
     // The indicator needs the tray icon; its lengths only apply to a click-to-start setter that stops after a while.
     private void ShowTrayIconDetails()
     {
-        _indicator.Visibility = _setter.ShowTrayIcon ? Visibility.Visible : Visibility.Collapsed;
-        _looks.Visibility = _setter.ShowTrayIcon ? Visibility.Visible : Visibility.Collapsed;
+        // Everything below the switch needs the tray icon, the taskbar note included (it closes with the switch).
+        _trayIconDetails.Visibility = _setter.ShowTrayIcon ? Visibility.Visible : Visibility.Collapsed;
         bool clickIcon = _setter.ShowTrayIcon && !_setter.IsAutomatic;
         _timerChoices.Visibility = clickIcon && _setter.HasTimer ? Visibility.Visible : Visibility.Collapsed;
         _timerHint.Visibility = clickIcon && !_setter.HasTimer ? Visibility.Visible : Visibility.Collapsed;
