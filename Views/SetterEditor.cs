@@ -755,25 +755,25 @@ internal sealed partial class SetterEditor : UserControl
             },
         };
         AutomationProperties.SetName(delete, "Delete setter");
-        actions.Children.Add(delete);
 
-        var export = new MenuFlyoutItem
+        var export = new Button
         {
-            Text = "Export .sett file",
-            Icon = new FontIcon { Glyph = "" },
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
+                Children =
+                {
+                    new FontIcon { Glyph = "", FontSize = 14 },
+                    new TextBlock { Text = "Export .sett file" },
+                },
+            },
         };
+        AutomationProperties.SetName(export, "Export .sett file");
         export.Click += async (_, _) => await ExportAsync();
 
-        var more = new Button
-        {
-            Flyout = new MenuFlyout { Items = { export } },
-            Content = new FontIcon { Glyph = "", FontSize = 14 },
-            Width = 40,
-            Height = 32,
-        };
-        AutomationProperties.SetName(more, "More setter actions");
-        ToolTipService.SetToolTip(more, "More actions");
-        actions.Children.Add(more);
+        actions.Children.Add(export);
+        actions.Children.Add(delete);
         return actions;
     }
 

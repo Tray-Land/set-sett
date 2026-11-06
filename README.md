@@ -44,7 +44,7 @@ You build **setters**. A setter is:
 
 **Creating and editing.** Setters are built in their own window ("New setter" in the flyout or the tray menu), starting blank or from a template: *Keep awake while rendering*, *Dark mode at night*, *Screen stays on for an hour*, *Quiet hours*. Every part of a template setter—settings and values, start and stop conditions, presentation, and tray icon behavior—is defined as JSON in `SetSett.Core\Data\setter-templates.json`; the app assigns the per-user setter and tray icon ids when a template is created.
 
-Use the editor footer's **More actions** menu to export one setter, or **Settings > Setter files**
+Use the **Export .sett file** button at the bottom of the editor to export one setter, or **Settings > Setter files**
 to export every setter, as a `.sett` JSON file. Opening or importing a `.sett` file brings Set Sett
 to Settings, shows what each setter changes and starts or stops on, and offers **Add all**,
 **Add selected**, or **Cancel**. You can also drop one or more `.sett` files anywhere on the
