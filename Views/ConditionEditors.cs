@@ -240,10 +240,26 @@ internal static class ConditionEditors
         var panel = new StackPanel { Spacing = 8 };
         string[] phases = stop ? ["At sunrise", "At sunset"] : ["Between sunset and sunrise", "Between sunrise and sunset"];
         int selected = stop ? (c.Phase == SunPhase.Day ? 0 : 1) : (c.Phase == SunPhase.Night ? 0 : 1);
+        NumberBox sunset = Number("Sunset offset (min)", c.SunsetOffsetMinutes, -240, 240, m => set(c = c with { SunsetOffsetMinutes = m }));
+        NumberBox sunrise = Number("Sunrise offset (min)", c.SunriseOffsetMinutes, -240, 240, m => set(c = c with { SunriseOffsetMinutes = m }));
+
+        // Stopping happens at one end of the night, so only that end's offset applies.
+        void ShowOffsets()
+        {
+            sunset.Visibility = !stop || c.Phase == SunPhase.Night ? Visibility.Visible : Visibility.Collapsed;
+            sunrise.Visibility = !stop || c.Phase == SunPhase.Day ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        ShowOffsets();
         panel.Children.Add(Horizontal(
-            Combo(phases, selected, i => set(c = c with { Phase = (i == 0) == stop ? SunPhase.Day : SunPhase.Night }), "Sun phase", 240),
-            Number("Sunset offset (min)", c.SunsetOffsetMinutes, -240, 240, m => set(c = c with { SunsetOffsetMinutes = m })),
-            Number("Sunrise offset (min)", c.SunriseOffsetMinutes, -240, 240, m => set(c = c with { SunriseOffsetMinutes = m }))));
+            Combo(phases, selected, i =>
+            {
+                set(c = c with { Phase = (i == 0) == stop ? SunPhase.Day : SunPhase.Night });
+                ShowOffsets();
+            }, "Sun phase", 240),
+            sunset,
+            sunrise));
+        panel.Children.Add(Caption("A negative offset means earlier."));
 
         TextBlock times = Caption("");
         var picker = new LocationPicker(compact: true);
