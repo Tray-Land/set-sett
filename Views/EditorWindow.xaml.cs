@@ -28,7 +28,7 @@ public sealed partial class EditorWindow : WindowEx
     public EditorWindow()
     {
         InitializeComponent();
-        Title = $"{App.DisplayName} setters";
+        Title = App.DisplayName;
         AppTitleBar.Title = Title;
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);

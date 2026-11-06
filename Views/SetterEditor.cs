@@ -202,7 +202,7 @@ internal sealed partial class SetterEditor : UserControl
             }
         };
         return Row(Glyphs.Power, "Enabled",
-            Caption("Turn off to keep this setter without it running. It stops if it's on, and nothing starts it until you turn it back on."),
+            Caption("Turn off to keep this setter but not use it. It stops if it's running, and nothing starts it until you turn it back on."),
             toggle, remove: null);
     }
 
@@ -414,14 +414,14 @@ internal sealed partial class SetterEditor : UserControl
         var modePadding = new Thickness(GlyphGap, 6, 0, 0);
         var manual = new RadioButton
         {
-            Content = "When I click it, in the flyout or on its own tray icon",
+            Content = "When I click it in the flyout or on its tray icon",
             GroupName = _radioGroup,
             IsChecked = !_setter.IsAutomatic,
             Padding = modePadding,
         };
         var automatic = new RadioButton
         {
-            Content = "Automatically, when something happens",
+            Content = "Automatically, when conditions are met",
             GroupName = _radioGroup,
             IsChecked = _setter.IsAutomatic,
             Padding = modePadding,
@@ -489,9 +489,14 @@ internal sealed partial class SetterEditor : UserControl
     private void BuildStop()
     {
         _stop.Children.Clear();
-        _stop.Children.Add(Caption(_setter.IsAutomatic
-            ? "It stops when its start conditions end. It can also stop early when any of these happens; then it waits until its conditions start again."
-            : "It stops when you click it again, or when any of these happens."));
+        // The wording only says "these" when there's a list to point at.
+        _stop.Children.Add(Caption((_setter.IsAutomatic, _setter.Until.Count > 0) switch
+        {
+            (true, true) => "It stops when its start conditions end, or sooner if any of these happens. After stopping sooner, it waits for its conditions to start again.",
+            (true, false) => "It stops when its start conditions end. Add a way to stop it sooner.",
+            (false, true) => "It stops when you click it again, or on its own if any of these happens.",
+            (false, false) => "It stops when you click it again. Add a way for it to stop on its own.",
+        }));
 
         for (int i = 0; i < _setter.Until.Count; i++)
         {
