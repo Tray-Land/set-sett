@@ -140,21 +140,45 @@ internal static class EditorParts
     /// <summary>An editable combo box: pick from what's there now, or type a name.</summary>
     public static ComboBox Picker(IEnumerable<string> suggestions, string text, Action<string> changed, string name)
     {
-        var combo = new ComboBox { IsEditable = true, MinWidth = 220, Text = text, PlaceholderText = "Type or pick a name" };
-        foreach (string suggestion in suggestions.Distinct(StringComparer.OrdinalIgnoreCase))
+        var combo = new ComboBox { IsEditable = true, MinWidth = 220, PlaceholderText = "Type or pick a name" };
+        List<string> items = [.. suggestions.Distinct(StringComparer.OrdinalIgnoreCase)];
+
+        // The saved name may not be around right now (another network, an app that's closed). It still
+        // has to show: an editable combo box drops Text set before it loads, but keeps a selected item.
+        string? saved = items.Find(item => string.Equals(item, text, StringComparison.OrdinalIgnoreCase));
+        if (saved is null && text.Length > 0)
         {
-            combo.Items.Add(suggestion);
+            saved = text;
+            items.Insert(0, text);
         }
 
+        foreach (string item in items)
+        {
+            combo.Items.Add(item);
+        }
+
+        combo.SelectedItem = saved;
         AutomationProperties.SetName(combo, name);
+
+        // Showing the saved name, or picking the name already set, isn't a change: saving it could restart a running setter.
+        string current = text;
+        void Report(string value)
+        {
+            if (!string.Equals(value, current, StringComparison.OrdinalIgnoreCase))
+            {
+                current = value;
+                changed(value);
+            }
+        }
+
         combo.SelectionChanged += (_, _) =>
         {
             if (combo.SelectedItem is string picked)
             {
-                changed(picked);
+                Report(picked);
             }
         };
-        combo.TextSubmitted += (_, e) => changed(e.Text.Trim());
+        combo.TextSubmitted += (_, e) => Report(e.Text.Trim());
         return combo;
     }
 }
