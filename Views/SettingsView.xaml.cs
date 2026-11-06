@@ -32,6 +32,13 @@ public sealed partial class SettingsView : UserControl
         _importFileAsync = importFileAsync;
         _exportAllAsync = exportAllAsync;
         InitializeComponent();
+        if (!inFlyout)
+        {
+            // In the editor window this page takes a setter's place, so it uses the same column.
+            Root.Padding = new Thickness(32, 20, 32, 32);
+            Root.MaxWidth = 820;
+        }
+
         AllowDrop = !inFlyout && _importFileAsync is not null;
         VersionText.Text = $"{App.DisplayName} {GetVersion()}";
         SetterFilesSection.Visibility = inFlyout ? Visibility.Collapsed : Visibility.Visible;

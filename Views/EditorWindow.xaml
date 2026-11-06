@@ -29,14 +29,16 @@
             </Grid.ColumnDefinitions>
 
             <!--  Setter list  -->
-            <Grid Padding="12,4,8,12" RowSpacing="8">
+            <Grid Padding="12,4,12,12" RowSpacing="8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
+                <!--  The 4 px side margins match ListViewItem's inset, so the button and the list share their edges.  -->
                 <DropDownButton
                     x:Name="NewButton"
+                    Margin="4,0"
                     HorizontalAlignment="Stretch"
                     AutomationProperties.Name="New setter">
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -53,8 +55,13 @@
                     AutomationProperties.Name="Setters"
                     SelectionChanged="SetterList_SelectionChanged"
                     SelectionMode="Single" />
+                <!--  Sized and padded like a list item, so its icon and label line up with the setters above.  -->
                 <Button
+                    x:Name="SettingsLink"
                     Grid.Row="2"
+                    MinHeight="40"
+                    Margin="4,0"
+                    Padding="12,0,12,0"
                     HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Left"
                     AutomationProperties.Name="Settings"
@@ -62,8 +69,11 @@
                     BorderThickness="0"
                     Click="SettingsLink_Click">
                     <StackPanel Orientation="Horizontal" Spacing="12">
-                        <FontIcon FontSize="16" Glyph="&#xE713;" />
-                        <TextBlock Text="Settings" />
+                        <FontIcon
+                            Width="20"
+                            FontSize="18"
+                            Glyph="&#xE713;" />
+                        <TextBlock VerticalAlignment="Center" Text="Settings" />
                     </StackPanel>
                 </Button>
             </Grid>

@@ -384,7 +384,7 @@ public sealed partial class EditorWindow : WindowEx
             var layout = new Grid { ColumnSpacing = 12, Padding = new Thickness(0, 6, 0, 6), Opacity = opacity };
             layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            layout.Children.Add(new FontIcon { FontSize = 18, VerticalAlignment = VerticalAlignment.Center }.Set(setter.Glyph));
+            layout.Children.Add(new FontIcon { FontSize = 18, Width = EditorParts.GlyphSlot, VerticalAlignment = VerticalAlignment.Center }.Set(setter.Glyph));
             var stack = new StackPanel();
             stack.Children.Add(new TextBlock { Text = name, TextTrimming = TextTrimming.CharacterEllipsis });
             stack.Children.Add(new TextBlock
@@ -393,6 +393,7 @@ public sealed partial class EditorWindow : WindowEx
                 Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
                 Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
                 TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxLines = 2,
             });
             Grid.SetColumn(stack, 1);
             layout.Children.Add(stack);
@@ -440,14 +441,21 @@ public sealed partial class EditorWindow : WindowEx
             importAsync: PickAndImportSetterAsync,
             importFileAsync: ImportSetterAsync,
             exportAllAsync: ExportAllSettersAsync);
-        EditorHost.Child = new Grid { Padding = new Thickness(24, 16, 20, 0), Children = { _settingsView } };
+        EditorHost.Child = _settingsView;
+        MarkSettingsLink(active: true);
     }
 
     private void SettingsLink_Click(object sender, RoutedEventArgs e) => ShowSettings();
 
+    // The list shows which setter is open; this does the same for Settings, which isn't in the list.
+    private void MarkSettingsLink(bool active) => SettingsLink.Background = active
+        ? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"]
+        : new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+
     private void ShowEditor(Setter? setter)
     {
         _settingsView = null;
+        MarkSettingsLink(active: false);
         _editingId = setter?.Id;
         EditorHost.Child = setter is null
             ? NothingSelected

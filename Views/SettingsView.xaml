@@ -8,7 +8,10 @@
 
     <!--  Shared by the flyout (a page) and the editor window (footer link). No chrome of its own.  -->
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Padding="0,0,4,16" Spacing="4">
+        <StackPanel
+            x:Name="Root"
+            Padding="0,0,4,16"
+            Spacing="4">
             <TextBlock
                 Margin="0,0,0,8"
                 Style="{StaticResource BodyStrongTextBlockStyle}"
@@ -39,6 +42,7 @@
                     x:Name="StartupToggle"
                     Grid.Column="1"
                     MinWidth="0"
+                    Margin="0,0,-12,0"
                     AutomationProperties.Name="Start with Windows"
                     IsEnabled="False"
                     OffContent=""
