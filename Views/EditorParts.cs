@@ -52,6 +52,23 @@ internal static class EditorParts
     /// <summary>A card row: glyph, title and caption, then an optional control and a remove button.</summary>
     public static Border Row(string glyph, string title, TextBlock caption, FrameworkElement? control, Action? remove, FrameworkElement? below = null)
     {
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        text.Children.Add(new TextBlock { Text = title, TextWrapping = TextWrapping.Wrap });
+        text.Children.Add(caption);
+        return RowOf(glyph, title, text, control, remove, below);
+    }
+
+    /// <summary>A card row that leads with what's been chosen: a small label over the value in large text.</summary>
+    public static Border ValueRow(string glyph, string label, TextBlock value, FrameworkElement? control, Action? remove, FrameworkElement? below = null)
+    {
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        text.Children.Add(Caption(label));
+        text.Children.Add(value);
+        return RowOf(glyph, label, text, control, remove, below);
+    }
+
+    private static Border RowOf(string glyph, string title, StackPanel text, FrameworkElement? control, Action? remove, FrameworkElement? below)
+    {
         // Columns and rows exist only when used. A Grid still adds its spacing around empty ones, which
         // would hold trailing controls off the card's edge and leave extra space under the text.
         var grid = new Grid { ColumnSpacing = GlyphGap };
@@ -62,9 +79,6 @@ internal static class EditorParts
         var icon = new FontIcon { Glyph = glyph, FontSize = 18, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         grid.Children.Add(icon);
 
-        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        text.Children.Add(new TextBlock { Text = title, TextWrapping = TextWrapping.Wrap });
-        text.Children.Add(caption);
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);
 

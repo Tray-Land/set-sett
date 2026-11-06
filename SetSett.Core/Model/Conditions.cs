@@ -9,9 +9,9 @@ namespace SetSett.Model;
 /// met. <see cref="Not"/> flips the answer ("not connected to", "isn't running").
 /// </summary>
 /// <remarks>
-/// To add a kind: derive here and register it below for JSON, describe it in <c>SetterText</c>,
-/// give it a sensor in the app's <c>SetterHost</c> if it reads a new one, and an editor row in the
-/// app's <c>ConditionEditors</c>.
+/// To add a kind: derive here and register it below for JSON, describe it in <c>SetterText</c> (with
+/// <c>Missing</c> if it can be left unset), give it a sensor in the app's <c>SetterHost</c> if it reads
+/// a new one, and an editor row in the app's <c>ConditionEditors</c>.
 /// </remarks>
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(TimeWindowCondition), "time")]

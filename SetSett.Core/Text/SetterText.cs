@@ -114,6 +114,21 @@ public static class SetterText
         _ => "until " + Condition(condition),
     };
 
+    /// <summary>
+    /// What a condition still needs before it can ever be true ("Pick a network"), or null when it has
+    /// what it needs. The phrases above stay readable without it ("connected to a network"), which suits
+    /// a sentence but would pass for a real choice on the condition's own row.
+    /// </summary>
+    public static string? Missing(Condition condition, bool hasHome) => condition switch
+    {
+        NetworkCondition n when string.IsNullOrWhiteSpace(n.Network) => "Pick a network",
+        DeviceCondition d when string.IsNullOrWhiteSpace(d.Device) => "Pick a device",
+        ProcessCondition p when string.IsNullOrWhiteSpace(p.Process) => "Pick an app",
+        PlaceCondition { Center: null } => "Set where this place is",
+        SunCondition when !hasHome => "Set your location",
+        _ => null,
+    };
+
     /// <summary>"after sunset and on weekdays", for an automatic setter's start.</summary>
     public static string When(Setter setter) => setter.When.Count == 0
         ? "no conditions yet"

@@ -46,6 +46,7 @@ internal sealed partial class SetterEditor : UserControl
     private readonly DispatcherQueueTimer _sliderTimer;
     private readonly string _radioGroup = Guid.NewGuid().ToString("N");
     private Action? _pendingSlider;
+    private Condition? _justAdded; // Its row opens ready to edit when the section rebuilds.
     private ToggleSwitch? _enabledToggle;
     private bool _syncing;
     private Setter _setter;
@@ -453,7 +454,7 @@ internal sealed partial class SetterEditor : UserControl
         for (int i = 0; i < _setter.When.Count; i++)
         {
             int index = i;
-            _start.Children.Add(ConditionEditors.Row(_setter.When[i], stop: false,
+            _start.Children.Add(ConditionEditors.Row(_setter.When[i], stop: false, startEditing: ReferenceEquals(_setter.When[i], _justAdded),
                 next => Commit(_setter with { When = [.. _setter.When.Select((c, j) => j == index ? next : c)] }),
                 () =>
                 {
@@ -469,8 +470,10 @@ internal sealed partial class SetterEditor : UserControl
 
         _start.Children.Add(AddConditionButton("Add a condition", ConditionEditors.StartKinds(), condition =>
         {
+            _justAdded = condition;
             Commit(_setter with { When = [.. _setter.When, condition] });
             BuildStart();
+            _justAdded = null;
         }));
     }
 
@@ -503,7 +506,7 @@ internal sealed partial class SetterEditor : UserControl
         for (int i = 0; i < _setter.Until.Count; i++)
         {
             int index = i;
-            _stop.Children.Add(ConditionEditors.Row(_setter.Until[i], stop: true,
+            _stop.Children.Add(ConditionEditors.Row(_setter.Until[i], stop: true, startEditing: ReferenceEquals(_setter.Until[i], _justAdded),
                 next => Commit(_setter with { Until = [.. _setter.Until.Select((c, j) => j == index ? next : c)] }),
                 () =>
                 {
@@ -514,8 +517,10 @@ internal sealed partial class SetterEditor : UserControl
 
         _stop.Children.Add(AddConditionButton("Add a way to stop", ConditionEditors.StopKinds(), condition =>
         {
+            _justAdded = condition;
             Commit(_setter with { Until = [.. _setter.Until, condition] });
             BuildStop();
+            _justAdded = null;
         }));
     }
 

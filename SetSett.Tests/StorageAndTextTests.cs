@@ -13,6 +13,40 @@ namespace SetSett.Tests;
 public sealed class StorageAndTextTests
 {
     [TestMethod]
+    public void Missing_NamesWhatAnUnsetConditionNeeds()
+    {
+        Assert.AreEqual("Pick a network", SetterText.Missing(new NetworkCondition(""), hasHome: true));
+        Assert.AreEqual("Pick a network", SetterText.Missing(new NetworkCondition("   "), hasHome: true), "blank counts as unset");
+        Assert.AreEqual("Pick a device", SetterText.Missing(new DeviceCondition("") { Not = true }, hasHome: true), "the stop form too");
+        Assert.AreEqual("Pick an app", SetterText.Missing(new ProcessCondition(""), hasHome: true));
+        Assert.AreEqual("Set where this place is", SetterText.Missing(new PlaceCondition(null, 250, "Home"), hasHome: true), "a name isn't a place");
+        Assert.AreEqual("Set your location", SetterText.Missing(new SunCondition(SunPhase.Night), hasHome: false));
+    }
+
+    [TestMethod]
+    public void Missing_IsNullOnceAConditionHasWhatItNeeds()
+    {
+        Condition[] complete =
+        [
+            new NetworkCondition("Home Wi-Fi"),
+            new DeviceCondition("Headphones"),
+            new ProcessCondition("blender") { Not = true },
+            new PlaceCondition(new GeoPoint(43, -88), 250, ""),
+            new SunCondition(SunPhase.Day),
+            new TimeWindowCondition(new TimeOnly(22, 0), new TimeOnly(7, 0), WeekDays.Every),
+            new PowerCondition(PowerCheck.OnBattery, PowerCondition.DefaultPercent),
+            new ElapsedCondition(60),
+            new ClockCondition(new TimeOnly(17, 0)),
+            new CpuQuietCondition(10, 5),
+        ];
+
+        foreach (Condition condition in complete)
+        {
+            Assert.IsNull(SetterText.Missing(condition, hasHome: true), condition.GetType().Name);
+        }
+    }
+
+    [TestMethod]
     public void Setters_RoundTripEveryConditionKind()
     {
         Setter setter = Setter.Create("Everything", 101) with

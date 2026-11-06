@@ -49,12 +49,26 @@ internal static class ConditionEditors
         new("Power or battery", Glyphs.Lightning, () => new PowerCondition(PowerCheck.BatteryBelow, PowerCondition.DefaultPercent)),
     ];
 
-    public static Border Row(Condition condition, bool stop, Action<Condition> changed, Action remove)
+    /// <summary>
+    /// A condition's card: its value in large text with an Edit link that opens the controls below it.
+    /// A condition that's new or still missing something opens ready to edit, so an unset one is never hidden.
+    /// </summary>
+    public static Border Row(Condition condition, bool stop, bool startEditing, Action<Condition> changed, Action remove)
     {
-        TextBlock caption = Caption(Describe(condition, stop));
+        // The style trims the first letter's side bearing, which would start it left of the small label above.
+        var value = new TextBlock { Style = Style("BodyLargeTextBlockStyle"), TextWrapping = TextWrapping.Wrap, OpticalMarginAlignment = OpticalMarginAlignment.None };
+        void ShowValue(Condition current)
+        {
+            string? missing = SetterText.Missing(current, PlaceService.Home is not null);
+            string text = missing ?? (stop ? SetterText.Until(current) : SetterText.Condition(current));
+            value.Text = char.ToUpper(text[0]) + text[1..];
+            value.Foreground = Brush(missing is null ? "TextFillColorPrimaryBrush" : "TextFillColorSecondaryBrush");
+        }
+
+        ShowValue(condition);
         void Changed(Condition next)
         {
-            caption.Text = Describe(next, stop);
+            ShowValue(next);
             changed(next);
         }
 
@@ -73,13 +87,25 @@ internal static class ConditionEditors
             _ => ("Condition", Glyphs.Settings),
         };
 
-        return EditorParts.Row(glyph, title, caption, control: null, remove, below: Editor(condition, stop, Changed));
-    }
+        // The controls are built on first open: a dial or a week view isn't cheap, and most rows stay closed.
+        // Nothing else changes a condition, so the one this row was built with is still current then.
+        var editor = new Border { Visibility = Visibility.Collapsed };
+        var edit = new HyperlinkButton();
+        void SetEditing(bool editing)
+        {
+            if (editing && editor.Child is null)
+            {
+                editor.Child = Editor(condition, stop, Changed);
+            }
 
-    private static string Describe(Condition condition, bool stop)
-    {
-        string text = stop ? SetterText.Until(condition) : SetterText.Condition(condition);
-        return char.ToUpper(text[0]) + text[1..];
+            editor.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
+            edit.Content = editing ? "Done" : "Edit";
+            AutomationProperties.SetName(edit, editing ? $"Done editing {title}" : $"Edit {title}");
+        }
+
+        edit.Click += (_, _) => SetEditing(editor.Visibility == Visibility.Collapsed);
+        SetEditing(startEditing || SetterText.Missing(condition, PlaceService.Home is not null) is not null);
+        return ValueRow(glyph, title, value, edit, remove, below: editor);
     }
 
     private static FrameworkElement Editor(Condition condition, bool stop, Action<Condition> set) => condition switch
