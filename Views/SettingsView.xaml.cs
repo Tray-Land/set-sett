@@ -43,9 +43,46 @@ public sealed partial class SettingsView : UserControl
         LocationHost.Content = picker;
 
         Refresh();
-        Unloaded += (_, _) => PlaceService.ReleaseCities();
+        ShowUpdateState();
+        // A static event keeps this page alive, so listen only while it's on screen.
+        Loaded += (_, _) =>
+        {
+            UpdateService.Changed += ShowUpdateState;
+            ShowUpdateState();
+        };
+        Unloaded += (_, _) =>
+        {
+            UpdateService.Changed -= ShowUpdateState;
+            PlaceService.ReleaseCities();
+        };
         _loading = false;
     }
+
+    private void ShowUpdateState()
+    {
+        UpdateState state = UpdateService.State;
+        UpdateSection.Visibility = state is UpdateState.NotApplicable ? Visibility.Collapsed : Visibility.Visible;
+        UpdateDot.Visibility = state is UpdateState.Available ? Visibility.Visible : Visibility.Collapsed;
+        RestartUpdateButton.Visibility = state is UpdateState.Available or UpdateState.Installing
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        RestartUpdateButton.IsEnabled = state is UpdateState.Available;
+        CheckUpdateButton.IsEnabled = state is not (UpdateState.Checking or UpdateState.Installing);
+        (UpdateTitle.Text, UpdateDescription.Text) = state switch
+        {
+            UpdateState.Available => ("A new version is ready",
+                "Restart Set Sett to install it. It comes back by itself, and your setters are checked again when it does."),
+            UpdateState.Installing => ("Installing the update...", "Set Sett closes and comes back in a moment."),
+            UpdateState.Checking => ("Checking for updates...", "Windows is looking at the release feed."),
+            UpdateState.UpToDate => ("Set Sett is up to date", "Windows checks the GitHub release feed when Set Sett starts, and again every few hours."),
+            UpdateState.Failed => ("Couldn't check for updates", "Check your connection and try again."),
+            _ => ("Updates", "Windows checks the GitHub release feed when Set Sett starts, and again every few hours."),
+        };
+    }
+
+    private async void CheckUpdate_Click(object sender, RoutedEventArgs e) => await UpdateService.CheckAsync();
+
+    private async void RestartUpdate_Click(object sender, RoutedEventArgs e) => await UpdateService.RestartToUpdateAsync();
 
     /// <summary>Re-reads whether Windows allows location (the user may have just changed it).</summary>
     public void Refresh() => LocationAccessText.Text = PlaceService.LocationAllowed

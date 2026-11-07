@@ -69,10 +69,16 @@
                     BorderThickness="0"
                     Click="SettingsLink_Click">
                     <StackPanel Orientation="Horizontal" Spacing="12">
-                        <FontIcon
-                            Width="20"
-                            FontSize="18"
-                            Glyph="&#xE713;" />
+                        <Grid Width="20">
+                            <FontIcon FontSize="18" Glyph="&#xE713;" />
+                            <InfoBadge
+                                x:Name="UpdateBadge"
+                                Margin="0,-4,-6,0"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Style="{StaticResource AttentionDotInfoBadgeStyle}"
+                                Visibility="Collapsed" />
+                        </Grid>
                         <TextBlock VerticalAlignment="Center" Text="Settings" />
                     </StackPanel>
                 </Button>

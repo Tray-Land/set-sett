@@ -36,9 +36,11 @@ public sealed partial class FlyoutPage : Page, IDisposable
         if (!_listening)
         {
             SetterHost.Changed += OnChanged;
+            UpdateService.Changed += ShowUpdateBadge;
             _listening = true;
         }
 
+        ShowUpdateBadge();
         Render(force: true);
     }
 
@@ -47,6 +49,7 @@ public sealed partial class FlyoutPage : Page, IDisposable
         if (_listening)
         {
             SetterHost.Changed -= OnChanged;
+            UpdateService.Changed -= ShowUpdateBadge;
             _listening = false;
         }
 
@@ -54,6 +57,9 @@ public sealed partial class FlyoutPage : Page, IDisposable
     }
 
     public void Dispose() => OnHidden();
+
+    private void ShowUpdateBadge() =>
+        UpdateBadge.Visibility = UpdateService.IsAvailable ? Visibility.Visible : Visibility.Collapsed;
 
     // Changed fires after every evaluation, often with nothing visible different (a CPU sample). A
     // rebuild would close an open right-click menu and drop keyboard focus, so it's skipped then.

@@ -65,7 +65,7 @@ Coming to the Microsoft Store. Requires Windows 10 2004 or later or Windows 11, 
 
 ## Privacy and footprint
 
-- **No network.** Set Sett makes no network calls and the package has no internet capability. The city list ships with the app.
+- **No network.** Set Sett makes no network calls and the package has no internet capability. The city list ships with the app. If you installed from the GitHub `.appinstaller`, Windows itself checks that release feed for updates; Set Sett only asks Windows whether one is waiting, and shows a dot on Settings with a **Restart to update** button. The Store version is updated by the Store.
 - **Location** is only used when you click "Use my location once" (for sun times) or "Use where I am now" (for a place condition), and for place conditions while Windows location is on for Set Sett. It never asks for location from the background. Only the place you choose is saved.
 - **What's stored**, in the app's own folder: your setters (`setters.json`), what's running and what to put back (`state.json`), your chosen place, and a size-capped troubleshooting log (`logs\setsett.log`, about 2 MB at most).
 - **Background work.** Setters have to act while the flyout is closed, so Set Sett runs only the sensors your setters need. Network, power, and device changes come from Windows events, and the clock is a single timer. Checking for a running app polls every 5 seconds, and only while a setter is watching for one. The CPU is sampled every 10 seconds, and only while a setter with a "CPU is quiet" stop condition is on.

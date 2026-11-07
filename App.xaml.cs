@@ -140,6 +140,7 @@ public partial class App : Application
         _setterIcons = new SetterTrayIcons(ShowFlyout, id => ShowEditor(id), ExitApp);
         SetterHost.Changed += OnSettersChanged;
         _ = StartSetterHostAsync(settFiles);
+        _ = UpdateService.CheckAtLaunchAsync();
 
         // File activation opens the import review instead of the flyout.
         if (settFiles.Count == 0 && !SettingsService.HasLaunchedBefore)

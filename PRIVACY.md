@@ -7,7 +7,7 @@ Set Sett does not collect, transmit, or share any of your information, private o
 ## The short version
 
 - No personal user information is collected, at all.
-- No data is sent anywhere. Set Sett makes no network calls and has no network capability.
+- No data is sent anywhere. Set Sett makes no network calls and has no network capability. If you installed it from the GitHub release feed, Windows (not Set Sett) checks that feed for updates, the same way it does for any app installed that way. The Microsoft Store version is updated by the Store.
 - No accounts, sign-in, analytics, telemetry, crash reporting, or advertising.
 - No third parties receive anything, because nothing leaves your device.
 

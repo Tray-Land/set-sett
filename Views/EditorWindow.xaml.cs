@@ -43,9 +43,12 @@ public sealed partial class EditorWindow : WindowEx
         SetterHost.SetEditorOpen(true);
         SetterHost.Changed += OnSettersChanged;
         Activated += (_, _) => _settingsView?.Refresh();
+        UpdateService.Changed += ShowUpdateBadge;
+        ShowUpdateBadge();
         Closed += (_, _) =>
         {
             SetterHost.Changed -= OnSettersChanged;
+            UpdateService.Changed -= ShowUpdateBadge;
             SetterHost.SetEditorOpen(false);
             PlaceService.ReleaseCities();
         };
@@ -455,6 +458,9 @@ public sealed partial class EditorWindow : WindowEx
     }
 
     /// <summary>Shows the app settings in place of a setter's editor.</summary>
+    private void ShowUpdateBadge() =>
+        UpdateBadge.Visibility = UpdateService.IsAvailable ? Visibility.Visible : Visibility.Collapsed;
+
     public void ShowSettings()
     {
         _suppressSelection = true;

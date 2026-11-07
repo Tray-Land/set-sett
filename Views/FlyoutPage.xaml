@@ -48,7 +48,17 @@
                 Click="SettingsButton_Click"
                 Style="{StaticResource FlyoutIconButtonStyle}"
                 ToolTipService.ToolTip="Settings">
-                <FontIcon FontSize="14" Glyph="&#xE713;" />
+                <Grid>
+                    <FontIcon FontSize="14" Glyph="&#xE713;" />
+                    <!--  An update is waiting: the Settings page has the Restart to update button.  -->
+                    <InfoBadge
+                        x:Name="UpdateBadge"
+                        Margin="0,-6,-8,0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Style="{StaticResource AttentionDotInfoBadgeStyle}"
+                        Visibility="Collapsed" />
+                </Grid>
             </Button>
         </Grid>
 

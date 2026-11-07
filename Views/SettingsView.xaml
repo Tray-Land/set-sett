@@ -12,6 +12,59 @@
             x:Name="Root"
             Padding="0,0,4,16"
             Spacing="4">
+            <!--  Only for an install from the GitHub .appinstaller feed; the Store updates its own.  -->
+            <StackPanel x:Name="UpdateSection" Visibility="Collapsed">
+                <StackPanel
+                    Margin="0,0,0,8"
+                    Orientation="Horizontal"
+                    Spacing="6">
+                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Updates" />
+                    <InfoBadge
+                        x:Name="UpdateDot"
+                        VerticalAlignment="Top"
+                        Style="{StaticResource AttentionDotInfoBadgeStyle}"
+                        Visibility="Collapsed" />
+                </StackPanel>
+                <Grid
+                    Margin="0,0,0,20"
+                    Padding="16,12"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    ColumnSpacing="12"
+                    CornerRadius="4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock x:Name="UpdateTitle" Text="Updates" />
+                        <TextBlock
+                            x:Name="UpdateDescription"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel
+                        Grid.Column="1"
+                        Orientation="Horizontal"
+                        Spacing="8">
+                        <Button
+                            x:Name="CheckUpdateButton"
+                            AutomationProperties.Name="Check for updates"
+                            Click="CheckUpdate_Click"
+                            Content="Check for updates" />
+                        <Button
+                            x:Name="RestartUpdateButton"
+                            AutomationProperties.Name="Restart to update"
+                            Click="RestartUpdate_Click"
+                            Content="Restart to update"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Visibility="Collapsed" />
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+
             <TextBlock
                 Margin="0,0,0,8"
                 Style="{StaticResource BodyStrongTextBlockStyle}"
