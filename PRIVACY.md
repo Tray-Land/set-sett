@@ -15,9 +15,10 @@ Set Sett does not collect, transmit, or share any of your information, private o
 
 Set Sett saves a few files in its own app folder so it can work:
 
-- **Your setters** (`setters.json`): the settings you chose to change, their values, and their conditions.
+- **Your setters** (`setters.json`): the settings you chose to change, their values, their conditions, and their icons. If you pick a picture for an icon, a small copy of it is kept here, and in any `.sett` file you export.
 - **Current state** (`state.json`): which setters are running and what to put back when they stop.
 - **Your chosen place**, if you pick one for sunrise and sunset or for a place condition.
+- **A troubleshooting log** (`logs\setsett.log`, plus one older file), capped at about 2 MB. It records what Set Sett did (which setter started or stopped, which setting it changed and put back) and any errors, with setter and setting names but no coordinates and no file contents. Settings has buttons to copy it, open its folder, or clear it. Detailed logging is off unless you turn it on.
 
 These files are never uploaded or shared. Uninstalling the app removes them.
 

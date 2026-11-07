@@ -50,7 +50,7 @@ The CPU check is whole-PC, not per app. A GPU-bound render can look idle to it, 
 
 | Setting | Limit |
 |---|---|
-| Windows mode, App mode, Transparency | Written to `HKCU\...\Themes\Personalize`, then a `WM_SETTINGCHANGE` "ImmersiveColorSet" broadcast is sent. Writes from the MSIX package reach the real registry (tested with `Invoke-CommandInDesktopPackage`). Apps that don't listen for the broadcast update when they restart. |
+| Theme (Windows and Apps), Transparency | Written to `HKCU\...\Themes\Personalize`, then a `WM_SETTINGCHANGE` "ImmersiveColorSet" broadcast is sent. Writes from the MSIX package reach the real registry (tested with `Invoke-CommandInDesktopPackage`). Apps that don't listen for the broadcast update when they restart. |
 | Volume, Mute, Microphone mute | The *default* device at the moment of the change. If the default device changes while a setter is on, the put-back goes to the new default. |
 | Wi-Fi, Bluetooth | The same switch as Quick Settings (`Windows.Devices.Radios`). Airplane mode, a hardware switch, or a policy can refuse the change; the flyout says so. |
 | Screen off / Sleep after | Changes the *active* power plan only. Switching plans changes the values in effect. Managed PCs can block plan changes by policy. "Applies when" picks the plugged in value, the on battery value, or both (Always); each is claimed and put back on its own, so Always restores each source's original. The picker is hidden on PCs without a battery. |

@@ -17,7 +17,7 @@ You build **setters**. A setter is:
 
 | Settings it can change | |
 |---|---|
-| Personalization | Windows mode (light/dark), App mode (light/dark), Transparency effects |
+| Personalization | Theme (light/dark for Windows and apps together, or either alone), Transparency effects |
 | Sound | Volume, Mute, Microphone mute (default devices) |
 | Connections | Wi-Fi, Bluetooth |
 | Power | Screen off after and Sleep after (always, only when plugged in, or only on battery), Keep awake |
@@ -40,9 +40,11 @@ You build **setters**. A setter is:
 
 **The flyout.** Each enabled setter is a button. A click-to-start setter is a toggle. An automatic one says what it's waiting for, and has a Pause button while it's on. A paused setter stays off until its conditions next begin, or until you click Resume. A run with a set end shows a ring with the time left. Right-click a button to edit, disable or delete its setter.
 
-**The tray.** Click the Set Sett icon for the flyout. Right-click it to toggle click-to-start setters, open the setter editor, open Settings, or quit. A setter's own tray icon is its glyph: full with a bar underneath while it's on, faded while it's off. Click it to start or stop the setter. If it stops at a set time ("After a while", "At a time", or a length picked from its menu), its icon can show how much of the run is left instead: a donut around the glyph, or a bar under or beside it, that empties as time goes by. If the setter is click-to-start and stops after a while, right-clicking its icon also offers other lengths ("Start for 2 hr"), 15 min to 8 hr unless you pick your own in the editor. While it's on, the same menu makes it stop that long from now ("Stop in 30 min"). The menu can also pause or resume an automatic setter, disable the setter, or open it in the editor.
+**The tray.** Click the Set Sett icon for the flyout. Right-click it to toggle click-to-start setters, open the setter editor, open Settings, or quit. A setter's own tray icon is its glyph: full with a bar underneath while it's on, faded while it's off. Click it to start or stop the setter. If it stops at a set time ("After a while", "At a time", or a length picked from its menu), its icon can show how much of the run is left instead: a donut around the glyph, or a bar under or beside it, that empties as time goes by. If the setter is click-to-start and stops after a while, right-clicking its icon also offers other lengths ("Start for 2 hr"), 15 min to 8 hr unless you pick your own in the editor. While it's on, the same menu makes it stop that long from now ("Stop in 30 min"). The menu can also pause or resume an automatic setter, or open it in the editor.
 
 **Creating and editing.** Setters are built in their own window ("New setter" in the flyout or the tray menu), starting blank or from a template: *Keep awake while rendering*, *Dark mode at night*, *Screen stays on for an hour*, *Quiet hours*. Every part of a template setter—settings and values, start and stop conditions, presentation, and tray icon behavior—is defined as JSON in `SetSett.Core\Data\setter-templates.json`; the app assigns the per-user setter and tray icon ids when a template is created. Each condition shows what it's set to, with an **Edit** link that opens its controls. A new condition, or one still missing something, opens ready to edit. Changes save as you make them.
+
+**Icons.** An icon button offers Segoe Fluent Icons, emoji, or a file of your own (ICO, PNG, JPG, BMP, or GIF). An emoji can be solid, in one color like the other icons, or multicolor. Set Sett keeps a small copy of a picture inside the setter, so moving or deleting the file changes nothing and a `.sett` file brings the picture along. Each state of a tray icon can have its own icon too. A multicolor emoji or a picture keeps its own colors, so the color picked for that state only changes the bar.
 
 Use the **Export .sett file** button at the bottom of the editor to export one setter, or **Settings > Setter files**
 to export every setter, as a `.sett` JSON file. Opening or importing a `.sett` file brings Set Sett
@@ -55,6 +57,8 @@ that contain one raw setter remain importable.
 
 **Settings.** In the flyout and in the editor window: Start with Windows, and your location for sunrise and sunset. Pick your city from the built-in list (no permission, no network), or use your location once. The flyout shows the current place, with a link to change it in the editor window.
 
+**Diagnostics.** Settings has a Diagnostics section for troubleshooting: copy a report (versions, setters and what's running, sensor state, and the recent log) for a bug report, capture the system state (every setting Set Sett can change and its value right now, in a selectable window, next to what any running setter will put back), open the logs folder, clear the logs, or turn on detailed logging. The log stays on your PC.
+
 ## Install
 
 Coming to the Microsoft Store. Requires Windows 10 2004 or later or Windows 11, on x64 or ARM64.
@@ -63,7 +67,7 @@ Coming to the Microsoft Store. Requires Windows 10 2004 or later or Windows 11, 
 
 - **No network.** Set Sett makes no network calls and the package has no internet capability. The city list ships with the app.
 - **Location** is only used when you click "Use my location once" (for sun times) or "Use where I am now" (for a place condition), and for place conditions while Windows location is on for Set Sett. It never asks for location from the background. Only the place you choose is saved.
-- **What's stored**, in the app's own folder: your setters (`setters.json`), what's running and what to put back (`state.json`), and your chosen place.
+- **What's stored**, in the app's own folder: your setters (`setters.json`), what's running and what to put back (`state.json`), your chosen place, and a size-capped troubleshooting log (`logs\setsett.log`, about 2 MB at most).
 - **Background work.** Setters have to act while the flyout is closed, so Set Sett runs only the sensors your setters need. Network, power, and device changes come from Windows events, and the clock is a single timer. Checking for a running app polls every 5 seconds, and only while a setter is watching for one. The CPU is sampled every 10 seconds, and only while a setter with a "CPU is quiet" stop condition is on.
 
 What Windows doesn't allow (forcing a tray icon onto the taskbar, settings with no public API) is explained in [docs/LIMITATIONS.md](docs/LIMITATIONS.md). Planned settings and conditions are in [docs/ROADMAP.md](docs/ROADMAP.md).
