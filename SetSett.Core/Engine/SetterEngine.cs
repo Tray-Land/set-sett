@@ -1,3 +1,4 @@
+using SetSett.Diagnostics;
 using SetSett.Model;
 
 namespace SetSett.Engine;
@@ -38,17 +39,25 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
     public async Task<IReadOnlyList<SetterTransition>> RecoverAsync(IReadOnlyList<Setter> setters, SensorSnapshot now)
     {
         State = store.Load();
+        Log.Info("Engine", $"Recovering: {State.Active.Count} active run(s), {State.Claims.Count} claimed setting(s)");
 
         foreach (string settingId in State.Claims.Keys.ToList())
         {
             ISetting? setting = catalog.Find(settingId);
             if (setting is null || setting.Info.Holder == ValueHolder.SetSett)
             {
+                Log.Info("Engine", $"Recovery dropped the claims on {settingId} ({(setting is null ? "unknown setting" : "held by Set Sett itself")})");
                 State = State.WithClaims(settingId, []);
                 continue;
             }
 
+            int before = State.Claims.TryGetValue(settingId, out var claims) ? claims.Count : 0;
             State = ClaimLedger.Verify(State, settingId, await setting.ReadAsync());
+            int after = State.Claims.TryGetValue(settingId, out var kept) ? kept.Count : 0;
+            if (after != before)
+            {
+                Log.Warn("Engine", $"Recovery voided the claims on {settingId}: the setting changed while Set Sett wasn't running");
+            }
         }
 
         foreach (SetterRun run in State.Active.ToList())
@@ -75,6 +84,11 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
 
         foreach (SetterTransition transition in transitions)
         {
+            Log.Info("Engine", transition.Renew
+                ? $"Step: renew {Name(setters, transition.SetterId)}"
+                : transition.Start
+                    ? $"Step: start {Name(setters, transition.SetterId)}"
+                    : $"Step: stop {Name(setters, transition.SetterId)} ({transition.Reason})");
             if (transition.Renew)
             {
                 await RenewAsync(setters.First(s => s.Id == transition.SetterId), now);
@@ -117,9 +131,11 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
     {
         if (!setter.CanRun || !setter.Enabled || State.IsActive(setter.Id))
         {
+            Log.Debug("Engine", $"Start of {setter.Name} [{setter.Id}] ignored (canRun={setter.CanRun}, enabled={setter.Enabled}, active={State.IsActive(setter.Id)})");
             return;
         }
 
+        Log.Info("Engine", $"Starting {setter.Name} [{setter.Id}]: {setter.Changes.Count} change(s), putBack={setter.PutBack}");
         State = State.WithRun(run).WithoutLatch(setter.Id);
         store.Save(State);
         await ApplyChangesAsync(setter, _ => true);
@@ -156,6 +172,7 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
 
     private async Task StopAsync(string setterId, StopReason reason, DateTime? pausedAtUtc)
     {
+        Log.Info("Engine", $"Stopping {setterId} ({reason}{(pausedAtUtc is null ? "" : ", paused")})");
         foreach (string settingId in State.SettingsClaimedBy(setterId).ToList())
         {
             ISetting? setting = catalog.Find(settingId);
@@ -164,9 +181,18 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
 
             // Write first, then save: a crash in between leaves a claim whose value no longer
             // matches, which the next start treats as void. The other order could lose the put-back.
-            if (putBack is not null && setting is not null && !await setting.WriteAsync(putBack))
+            if (putBack is null)
             {
+                Log.Info("Engine", $"No put-back for {settingId} (setting changed since, or another setter holds it)");
+            }
+            else if (setting is not null && !await setting.WriteAsync(putBack))
+            {
+                Log.Warn("Engine", $"Put-back of {settingId} failed");
                 _problems.Add(new SettingProblem(setterId, settingId, DateTime.UtcNow));
+            }
+            else
+            {
+                Log.Info("Engine", $"Put back {settingId}");
             }
 
             store.Save(State);
@@ -193,6 +219,9 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
         store.Save(State);
     }
 
+    private static string Name(IReadOnlyList<Setter> setters, string id) =>
+        setters.FirstOrDefault(s => s.Id == id) is { } s ? $"{s.Name} [{id}]" : id;
+
     private async Task ApplyChangesAsync(Setter setter, Func<SettingChange, bool> include, bool skipIfAlreadySet = false)
     {
         // Unavailable family members wait until the loop ends: a PC without a battery has no
@@ -205,12 +234,14 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
             if (setting is null || !setting.Info.Accepts(change.Value))
             {
                 // Skipped, not silent: report it like a refused write so the flyout can say so.
+                Log.Warn("Engine", $"{change.SettingId} skipped for {setter.Name}: {(setting is null ? "unknown setting" : "value not accepted")}");
                 _problems.Add(new SettingProblem(setter.Id, change.SettingId, DateTime.UtcNow));
                 continue;
             }
 
             if (!await setting.IsAvailableAsync())
             {
+                Log.Warn("Engine", $"{change.SettingId} is unavailable on this PC (setter {setter.Name})");
                 if (setting.Info.Family is { } family)
                 {
                     unavailableMembers.Add((change.SettingId, family));
@@ -237,11 +268,17 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
 
             if (skipIfAlreadySet && change.Value.Matches(current))
             {
+                Log.Debug("Engine", $"{change.SettingId} already set; not written");
                 continue;
             }
 
-            if (!await setting.WriteAsync(change.Value))
+            if (await setting.WriteAsync(change.Value))
             {
+                Log.Info("Engine", $"Set {change.SettingId} for {setter.Name}");
+            }
+            else
+            {
+                Log.Warn("Engine", $"Windows refused {change.SettingId} for {setter.Name}");
                 _problems.Add(new SettingProblem(setter.Id, change.SettingId, DateTime.UtcNow));
                 State = ClaimLedger.Discard(State, change.SettingId, setter.Id);
                 store.Save(State);

@@ -3,6 +3,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Windows.AppLifecycle;
+using SetSett.Diagnostics;
 using SetSett.Model;
 using SetSett.Services;
 using SetSett.Views;
@@ -50,27 +51,36 @@ public partial class App : Application
 
     public App()
     {
+        // First, so a crash during startup is captured too. None of these handlers mark the exception
+        // handled: the process still ends, but the log says why (a WER report for a WinUI app carries
+        // an HRESULT and no managed stack).
+        DiagnosticsService.Start();
+        UnhandledException += (_, e) => LogFatal("Unhandled XAML exception", e.Exception, e.Message);
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            LogFatal(e.IsTerminating ? "Unhandled exception (terminating)" : "Unhandled exception",
+                e.ExceptionObject as Exception, e.ExceptionObject?.ToString());
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            Log.Error("Crash", "Unobserved task exception", e.Exception);
+            e.SetObserved();
+        };
+
         InitializeComponent();
 
         // A tray app lives on after its windows close; only the Quit menu ends it.
         DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
-        UnhandledException += (_, e) => LogCrash(e.Exception);
-        AppDomain.CurrentDomain.UnhandledException += (_, e) => LogCrash(e.ExceptionObject as Exception);
     }
 
     public static new App Current => (App)Application.Current;
 
-    public static void LogCrash(Exception? ex)
+    /// <summary>Logs a caught exception the app recovers from.</summary>
+    public static void LogCrash(Exception? ex) => Log.Error("App", "Unexpected exception", ex);
+
+    // The process is about to die and the writer thread won't get another turn, so wait for the disk.
+    private static void LogFatal(string what, Exception? ex, string? message)
     {
-        try
-        {
-            string path = Path.Combine(Path.GetTempPath(), "SetSett-crash.log");
-            File.AppendAllText(path, $"[{DateTime.Now:O}] {ex}{Environment.NewLine}");
-        }
-        catch
-        {
-            // Never throw from the crash logger.
-        }
+        string detail = message is { Length: > 0 } && ex?.Message != message ? $"{what} ({message})" : what;
+        Log.Fatal("Crash", detail, ex);
     }
 
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
@@ -78,6 +88,7 @@ public partial class App : Application
         AppActivationArguments? activation = CurrentActivation();
         IReadOnlyList<string> settFiles = SettPaths(activation);
         _singleInstanceMutex = new Mutex(true, MutexName, out bool createdNew);
+        Log.Info("App", $"Launched (activation={activation?.Kind.ToString() ?? "none"}, .sett files={settFiles.Count}, firstInstance={createdNew})");
         if (!createdNew)
         {
             _singleInstanceMutex.Dispose();
@@ -119,9 +130,10 @@ public partial class App : Application
         {
             RegisterApplicationRestart(null, RestartNoPatch | RestartNoReboot);
         }
-        catch
+        catch (Exception ex)
         {
             // Best-effort.
+            Log.Warn("App", "Could not register for restart after a crash", ex);
         }
 
         InitializeTrayIcon();
@@ -421,6 +433,7 @@ public partial class App : Application
         }
 
         _isExiting = true;
+        Log.Info("App", "Quit requested");
         _flyout?.CloseWindow();
         _editor?.Close();
 
@@ -447,6 +460,8 @@ public partial class App : Application
         _showEvent?.Dispose();
         _singleInstanceMutex?.ReleaseMutex();
         _singleInstanceMutex?.Dispose();
+        Log.Info("App", "Exited cleanly");
+        Log.Shutdown();
         Exit();
     }
 

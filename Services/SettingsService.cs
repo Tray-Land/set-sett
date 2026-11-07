@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using SetSett.Diagnostics;
 using Windows.Storage;
 
 namespace SetSett.Services;
@@ -22,6 +23,13 @@ internal static class SettingsService
     {
         get => Get(nameof(HasLaunchedBefore), false);
         set => Set(nameof(HasLaunchedBefore), value);
+    }
+
+    /// <summary>Whether the log also records Debug lines (sensor reports, clock wakes, timings).</summary>
+    public static bool VerboseLogging
+    {
+        get => Get(nameof(VerboseLogging), false);
+        set => Set(nameof(VerboseLogging), value);
     }
 
     /// <summary>True once the user closed the editor's "Windows may hide it at first" note.</summary>
@@ -60,8 +68,9 @@ internal static class SettingsService
         {
             return JsonSerializer.Deserialize(json, typeInfo);
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
+            Log.Warn("Settings", $"Ignoring unreadable saved value for {key}", ex);
             return default;
         }
     }
@@ -77,8 +86,9 @@ internal static class SettingsService
                 ? typed
                 : defaultValue;
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Settings", $"Could not read {key}; using the default", ex);
             return defaultValue;
         }
     }
@@ -96,9 +106,10 @@ internal static class SettingsService
                 ApplicationData.Current.LocalSettings.Values[key] = value;
             }
         }
-        catch
+        catch (Exception ex)
         {
             // Settings are best-effort; ignore storage failures.
+            Log.Warn("Settings", $"Could not save {key}", ex);
         }
     }
 }

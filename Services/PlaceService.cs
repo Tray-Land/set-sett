@@ -1,3 +1,4 @@
+using SetSett.Diagnostics;
 using SetSett.Model;
 using SetSett.Places;
 using SetSett.Sensing;
@@ -44,8 +45,9 @@ internal static class PlaceService
                 using StreamReader reader = File.OpenText(path);
                 return CityCatalog.Parse(reader);
             }
-            catch
+            catch (Exception ex)
             {
+                Log.Warn("Places", "Could not load the city list", ex);
                 return (IReadOnlyList<City>)[];
             }
         });

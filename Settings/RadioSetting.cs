@@ -1,3 +1,4 @@
+using SetSett.Diagnostics;
 using SetSett.Model;
 using Windows.Devices.Radios;
 
@@ -48,10 +49,17 @@ internal sealed class RadioSetting(SettingInfo info, RadioKind kind) : ISetting
 
         try
         {
-            return await radio.SetStateAsync(onOff.On ? RadioState.On : RadioState.Off) == RadioAccessStatus.Allowed;
+            RadioAccessStatus status = await radio.SetStateAsync(onOff.On ? RadioState.On : RadioState.Off);
+            if (status != RadioAccessStatus.Allowed)
+            {
+                Log.Warn("Radio", $"Setting {kind} {(onOff.On ? "on" : "off")} was not allowed: {status}");
+            }
+
+            return status == RadioAccessStatus.Allowed;
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Radio", $"Setting {kind} failed", ex);
             return false;
         }
     }
@@ -68,8 +76,9 @@ internal sealed class RadioSetting(SettingInfo info, RadioKind kind) : ISetting
 
             return (await Radio.GetRadiosAsync()).FirstOrDefault(r => r.Kind == kind);
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Radio", $"Could not find the {kind} radio", ex);
             return null;
         }
     }
@@ -80,8 +89,9 @@ internal sealed class RadioSetting(SettingInfo info, RadioKind kind) : ISetting
         {
             return await Radio.RequestAccessAsync() == RadioAccessStatus.Allowed;
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Radio", "Radio access request failed", ex);
             return false;
         }
     }

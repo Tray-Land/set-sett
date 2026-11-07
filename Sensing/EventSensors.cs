@@ -1,4 +1,5 @@
 using Microsoft.Windows.System.Power;
+using SetSett.Diagnostics;
 using SetSett.Model;
 using Windows.Devices.Enumeration;
 using Windows.Networking.Connectivity;
@@ -58,8 +59,9 @@ internal sealed class NetworkSensor : IDisposable
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Sensors", "Could not read network names", ex);
             return [];
         }
     }
@@ -223,8 +225,9 @@ internal sealed class PowerSensor : IDisposable
                 hasBattery ? PowerManager.RemainingChargePercent : null,
                 PowerManager.PowerSupplyStatus != PowerSupplyStatus.NotPresent);
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Sensors", "Could not read power state", ex);
             return null;
         }
     }

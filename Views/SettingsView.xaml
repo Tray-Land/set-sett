@@ -125,6 +125,58 @@
             <TextBlock
                 Margin="0,20,0,8"
                 Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="Diagnostics" />
+            <Border
+                Padding="16,12"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="4">
+                <StackPanel Spacing="12">
+                    <StackPanel>
+                        <TextBlock Text="Troubleshooting log" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Set Sett keeps a small log on this PC of what it set and put back, and anything that went wrong. It is never sent anywhere. Copy it into a bug report if something misbehaves."
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button
+                            AutomationProperties.Name="Copy diagnostics"
+                            Click="CopyDiagnostics_Click"
+                            Content="Copy diagnostics" />
+                        <Button
+                            AutomationProperties.Name="Capture system state"
+                            Click="CaptureState_Click"
+                            Content="Capture system state" />
+                        <Button
+                            AutomationProperties.Name="Open logs folder"
+                            Click="OpenLogs_Click"
+                            Content="Open logs folder" />
+                        <Button
+                            AutomationProperties.Name="Clear logs"
+                            Click="ClearLogs_Click"
+                            Content="Clear logs" />
+                    </StackPanel>
+                    <ToggleSwitch
+                        x:Name="VerboseToggle"
+                        MinWidth="0"
+                        AutomationProperties.Name="Detailed logging"
+                        Header="Detailed logging"
+                        OffContent="Off"
+                        OnContent="On (sensor reports, timings; turn off when done)"
+                        Toggled="VerboseToggle_Toggled" />
+                    <InfoBar
+                        x:Name="DiagnosticsInfoBar"
+                        IsClosable="True"
+                        IsOpen="False" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock
+                Margin="0,20,0,8"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
                 Text="About" />
             <TextBlock x:Name="VersionText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         </StackPanel>

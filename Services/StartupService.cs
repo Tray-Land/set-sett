@@ -1,3 +1,4 @@
+using SetSett.Diagnostics;
 using Windows.ApplicationModel;
 
 namespace SetSett.Services;
@@ -15,8 +16,9 @@ internal static class StartupService
             StartupTask task = await StartupTask.GetAsync(TaskId);
             return task.State;
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Debug("Startup", $"No startup task (unpackaged?): {ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }
@@ -26,16 +28,20 @@ internal static class StartupService
         try
         {
             StartupTask task = await StartupTask.GetAsync(TaskId);
+            Log.Info("Startup", $"User turned start with Windows {(enabled ? "on" : "off")}");
             if (enabled)
             {
-                return await task.RequestEnableAsync();
+                StartupTaskState result = await task.RequestEnableAsync();
+                Log.Info("Startup", $"Start with Windows is now {result}");
+                return result;
             }
 
             task.Disable();
             return task.State;
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Startup", "Could not change start with Windows", ex);
             return null;
         }
     }

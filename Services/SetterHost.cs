@@ -1,5 +1,6 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.Windows.System.Power;
+using SetSett.Diagnostics;
 using SetSett.Engine;
 using SetSett.Model;
 using SetSett.Sensing;
@@ -75,6 +76,7 @@ internal static class SetterHost
         PlaceService.HomeChanged += QueueEvaluate;
 
         Setters = SetterStore.LoadSetters();
+        Log.Info("Host", $"Loaded {Setters.Count} setter(s) from {SetterStore.Folder}");
         _engine = new SetterEngine(Catalog, new FileRunStateStore());
 
         await Gate.WaitAsync();
@@ -88,10 +90,11 @@ internal static class SetterHost
             RunState saved = new FileRunStateStore().Load();
             UpdateSensors(SetterPolicy.SensorsNeeded(Setters, saved, Snapshot), saved);
             await _engine.RecoverAsync(Setters, BuildSnapshot());
+            Log.Info("Host", $"Started: {Setters.Count} setter(s), {Run.Active.Count} running after recovery");
         }
         catch (Exception ex)
         {
-            App.LogCrash(ex);
+            Log.Error("Host", "Startup recovery failed", ex);
         }
         finally
         {
@@ -104,6 +107,7 @@ internal static class SetterHost
     /// <summary>Exit: puts every running setter's settings back and stops all sensors.</summary>
     public static async Task ShutdownAsync()
     {
+        Log.Info("Host", "Shutting down: putting settings back");
         _stopping = true;
         FlushSave();
         _clockTimer?.Stop();
@@ -117,7 +121,7 @@ internal static class SetterHost
         }
         catch (Exception ex)
         {
-            App.LogCrash(ex);
+            Log.Error("Host", "Shutdown failed to put every setting back", ex);
         }
         finally
         {
@@ -138,6 +142,7 @@ internal static class SetterHost
             return;
         }
 
+        Log.Info("Host", $"Toggle {setter.Name} [{setterId}] (automatic={setter.IsAutomatic}, active={Run.IsActive(setterId)}, paused={Run.IsPaused(setterId)})");
         await Gate.WaitAsync();
         try
         {
@@ -163,7 +168,7 @@ internal static class SetterHost
         }
         catch (Exception ex)
         {
-            App.LogCrash(ex);
+            Log.Error("Host", $"Toggle of {setterId} failed", ex);
         }
         finally
         {
@@ -184,6 +189,7 @@ internal static class SetterHost
             return;
         }
 
+        Log.Info("Host", $"Start {setter.Name} [{setterId}] for {length}");
         await Gate.WaitAsync();
         try
         {
@@ -191,7 +197,7 @@ internal static class SetterHost
         }
         catch (Exception ex)
         {
-            App.LogCrash(ex);
+            Log.Error("Host", $"Timed start of {setterId} failed", ex);
         }
         finally
         {
@@ -214,11 +220,13 @@ internal static class SetterHost
     public static void Save(Setter setter)
     {
         Setter? old = Find(setter.Id);
+        Log.Info("Host", $"{(old is null ? "Added" : "Saved")} setter {setter.Name} [{setter.Id}]");
         Setters = old is null ? [.. Setters, setter] : [.. Setters.Select(s => s.Id == setter.Id ? setter : s)];
         ScheduleSave();
 
         if (old is not null && Run.IsActive(setter.Id) && setter.RunsDifferentlyThan(old))
         {
+            Log.Info("Host", $"Edit changes what running setter {setter.Id} does; stopping it first");
             _ = StopThenEvaluateAsync(setter.Id, StopReason.Edited);
         }
         else
@@ -230,6 +238,7 @@ internal static class SetterHost
     /// <summary>Deletes a setter; if it's on, the next evaluation puts its settings back.</summary>
     public static void Remove(string setterId)
     {
+        Log.Info("Host", $"Removed setter {setterId}");
         Setters = [.. Setters.Where(s => s.Id != setterId)];
         ScheduleSave();
         QueueEvaluate();
@@ -313,11 +322,14 @@ internal static class SetterHost
         await Gate.WaitAsync();
         try
         {
-            await _engine.StepAsync(Setters, BuildSnapshot());
+            using (Log.Time("Host", "Evaluation"))
+            {
+                await _engine.StepAsync(Setters, BuildSnapshot());
+            }
         }
         catch (Exception ex)
         {
-            App.LogCrash(ex);
+            Log.Error("Host", "Evaluation failed", ex);
         }
         finally
         {
@@ -388,10 +400,12 @@ internal static class SetterHost
     {
         if (on && sensor is null)
         {
+            Log.Info("Sensors", $"{typeof(T).Name} started");
             sensor = create();
         }
         else if (!on && sensor is not null)
         {
+            Log.Info("Sensors", $"{typeof(T).Name} stopped");
             sensor.Dispose();
             sensor = null;
         }
@@ -417,9 +431,10 @@ internal static class SetterHost
                 PowerManager.SystemSuspendStatusChanged -= OnSuspendStatusChanged;
             }
         }
-        catch
+        catch (Exception ex)
         {
             // Power notifications are a nicety; the clock timer still catches up.
+            Log.Warn("Host", "Could not watch for resume from sleep", ex);
         }
     }
 
@@ -427,6 +442,7 @@ internal static class SetterHost
     {
         if (PowerManager.SystemSuspendStatus is SystemSuspendStatus.AutoResume or SystemSuspendStatus.ManualResume)
         {
+            Log.Info("Host", $"Resumed from sleep ({PowerManager.SystemSuspendStatus}); re-evaluating");
             QueueEvaluate();
         }
     }
@@ -447,6 +463,7 @@ internal static class SetterHost
         // A second past the boundary, so the evaluation lands on the far side of it.
         TimeSpan interval = wake - DateTime.UtcNow + TimeSpan.FromSeconds(1);
         _clockTimer.Interval = interval < TimeSpan.FromSeconds(1) ? TimeSpan.FromSeconds(1) : interval;
+        Log.Debug("Host", $"Next clock wake in {_clockTimer.Interval}");
         _clockTimer.Start();
     }
 

@@ -1,3 +1,4 @@
+using SetSett.Diagnostics;
 using SetSett.Model;
 using Windows.Devices.Geolocation;
 using Windows.Security.Authorization.AppCapabilityAccess;
@@ -51,8 +52,9 @@ internal sealed class LocationSensor : IDisposable
                     _ => LocationAccess.Denied,
                 };
             }
-            catch
+            catch (Exception ex)
             {
+                Log.Warn("Location", "Could not read the location permission", ex);
                 return LocationAccess.Unknown;
             }
         }
@@ -70,8 +72,9 @@ internal sealed class LocationSensor : IDisposable
                 _ => LocationAccess.Unknown,
             };
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Location", "Location access request failed; treating as denied", ex);
             return LocationAccess.Denied;
         }
     }
@@ -86,8 +89,10 @@ internal sealed class LocationSensor : IDisposable
             BasicGeoposition point = position.Coordinate.Point.Position;
             return new GeoPoint(point.Latitude, point.Longitude);
         }
-        catch
+        catch (Exception ex)
         {
+            // No coordinates in the log: only that a fix failed.
+            Log.Debug("Location", $"No location fix: {ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }

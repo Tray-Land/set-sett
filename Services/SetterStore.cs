@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SetSett.Diagnostics;
 using SetSett.Engine;
 using SetSett.Model;
 using SetSett.Storage;
@@ -13,7 +14,7 @@ namespace SetSett.Services;
 /// </summary>
 internal static class SetterStore
 {
-    private static string Folder
+    public static string Folder
     {
         get
         {
@@ -52,11 +53,13 @@ internal static class SetterStore
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
+            Log.Error("Store", $"{Path.GetFileName(path)} is unreadable; keeping it aside and starting empty", ex);
             KeepAside(path);
             return fallback;
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Error("Store", $"Could not read {Path.GetFileName(path)}; using defaults", ex);
             return fallback;
         }
     }
@@ -70,9 +73,10 @@ internal static class SetterStore
             File.WriteAllText(temp, text);
             File.Move(temp, path, overwrite: true);
         }
-        catch
+        catch (Exception ex)
         {
             // Best-effort; the next save tries again.
+            Log.Error("Store", $"Could not write {Path.GetFileName(path)}", ex);
         }
     }
 
@@ -82,9 +86,11 @@ internal static class SetterStore
         {
             string aside = Path.ChangeExtension(path, $".unreadable-{DateTime.Now:yyyyMMdd-HHmmss}.json");
             File.Move(path, aside);
+            Log.Warn("Store", $"Moved {Path.GetFileName(path)} to {Path.GetFileName(aside)}");
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Error("Store", $"Could not keep {Path.GetFileName(path)} aside", ex);
         }
     }
 }

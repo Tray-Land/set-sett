@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using SetSett.Diagnostics;
 using SetSett.Services;
 using Windows.ApplicationModel;
 using Windows.ApplicationModel.DataTransfer;
@@ -18,12 +19,7 @@ public sealed partial class SettingsView : UserControl
     private readonly Func<string, Task>? _importFileAsync;
     private readonly Func<Task>? _exportAllAsync;
 
-    /// <param name="inFlyout">
-    /// True in the flyout. Setting the place can raise a Windows consent prompt that takes focus and
-    /// hides the flyout mid-request, so there it's read-only with a link to the editor's Settings page.
-    /// </param>
     public SettingsView(
-        bool inFlyout = false,
         Func<Task>? importAsync = null,
         Func<string, Task>? importFileAsync = null,
         Func<Task>? exportAllAsync = null)
@@ -32,38 +28,19 @@ public sealed partial class SettingsView : UserControl
         _importFileAsync = importFileAsync;
         _exportAllAsync = exportAllAsync;
         InitializeComponent();
-        if (!inFlyout)
-        {
-            // In the editor window this page takes a setter's place, so it uses the same column.
-            Root.Padding = new Thickness(32, 20, 32, 32);
-            Root.MaxWidth = 820;
-        }
+        // This page takes a setter's place in the editor window, so it uses the same column.
+        Root.Padding = new Thickness(32, 20, 32, 32);
+        Root.MaxWidth = 820;
 
-        AllowDrop = !inFlyout && _importFileAsync is not null;
+        AllowDrop = _importFileAsync is not null;
         VersionText.Text = $"{App.DisplayName} {GetVersion()}";
-        SetterFilesSection.Visibility = inFlyout ? Visibility.Collapsed : Visibility.Visible;
         ExportAllButton.IsEnabled = SetterHost.Setters.Count > 0;
         _ = LoadStartupStateAsync();
+        VerboseToggle.IsOn = Log.Verbose;
 
-        if (inFlyout)
-        {
-            var panel = new StackPanel { Spacing = 4 };
-            panel.Children.Add(new TextBlock
-            {
-                Text = PlaceService.Home is { } home ? home.Name : "No location set.",
-                TextWrapping = TextWrapping.Wrap,
-            });
-            var change = new HyperlinkButton { Content = "Change location in Settings", Padding = new Thickness(0) };
-            change.Click += (_, _) => App.Current.ShowSettings();
-            panel.Children.Add(change);
-            LocationHost.Content = panel;
-        }
-        else
-        {
-            var picker = new LocationPicker();
-            picker.Changed += Refresh;
-            LocationHost.Content = picker;
-        }
+        var picker = new LocationPicker();
+        picker.Changed += Refresh;
+        LocationHost.Content = picker;
 
         Refresh();
         Unloaded += (_, _) => PlaceService.ReleaseCities();
@@ -209,6 +186,119 @@ public sealed partial class SettingsView : UserControl
             _ => "Keep the tray icon ready after you sign in.",
         };
         _loading = false;
+    }
+
+    private void ShowDiagnostics(InfoBarSeverity severity, string message)
+    {
+        DiagnosticsInfoBar.Severity = severity;
+        DiagnosticsInfoBar.Message = message;
+        DiagnosticsInfoBar.IsOpen = true;
+    }
+
+    private void CopyDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var package = new DataPackage();
+            package.SetText(DiagnosticsService.BuildReport());
+            Clipboard.SetContent(package);
+            Log.Info("Settings", "User copied diagnostics");
+            ShowDiagnostics(InfoBarSeverity.Success, "Copied the diagnostics to the clipboard.");
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Settings", "Copy diagnostics failed", ex);
+            ShowDiagnostics(InfoBarSeverity.Error, $"Couldn't copy the diagnostics: {ex.Message}");
+        }
+    }
+
+    private async void CaptureState_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            string report = await DiagnosticsService.CaptureSystemStateAsync();
+            var text = new TextBlock
+            {
+                Text = report,
+                IsTextSelectionEnabled = true,
+                FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
+                FontSize = 12,
+                TextWrapping = TextWrapping.NoWrap,
+            };
+            var scroller = new ScrollViewer
+            {
+                Content = text,
+                MaxHeight = 460,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            };
+            var dialog = new ContentDialog
+            {
+                Title = "System state",
+                Content = scroller,
+                PrimaryButtonText = "Copy",
+                CloseButtonText = "Close",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = XamlRoot,
+            };
+            dialog.Resources["ContentDialogMaxWidth"] = 900.0;
+            if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            {
+                var package = new DataPackage();
+                package.SetText(report);
+                Clipboard.SetContent(package);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Settings", "Capture system state failed", ex);
+            ShowDiagnostics(InfoBarSeverity.Error, $"Couldn't capture the system state: {ex.Message}");
+        }
+    }
+
+    private async void OpenLogs_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            string folder = Log.FolderPath;
+            if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+            {
+                ShowDiagnostics(InfoBarSeverity.Informational, "No logs have been written yet.");
+            }
+            else if (!await Windows.System.Launcher.LaunchFolderPathAsync(folder))
+            {
+                ShowDiagnostics(InfoBarSeverity.Error, $"Couldn't open the logs folder. It's at: {folder}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Settings", "Open logs folder failed", ex);
+            ShowDiagnostics(InfoBarSeverity.Error, $"Couldn't open the logs folder: {ex.Message}");
+        }
+    }
+
+    private void ClearLogs_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Log.Clear();
+            ShowDiagnostics(InfoBarSeverity.Success, "Cleared the logs.");
+        }
+        catch (Exception ex)
+        {
+            ShowDiagnostics(InfoBarSeverity.Error, $"Couldn't clear the logs: {ex.Message}");
+        }
+    }
+
+    private void VerboseToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        SettingsService.VerboseLogging = VerboseToggle.IsOn;
+        Log.Verbose = VerboseToggle.IsOn;
     }
 
     private async void StartupToggle_Toggled(object sender, RoutedEventArgs e)

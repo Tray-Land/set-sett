@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
+using SetSett.Diagnostics;
 using SetSett.Model;
 
 namespace SetSett.Settings;
@@ -51,8 +52,9 @@ internal static partial class CoreAudio
 
             return action(volume);
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Audio", "Core Audio call failed", ex);
             return null;
         }
     }
