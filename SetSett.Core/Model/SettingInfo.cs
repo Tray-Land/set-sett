@@ -51,6 +51,12 @@ public sealed record SettingInfo(string Id, string Name, string Group, string Gl
     /// <summary>For a family member, when it applies: "Plugged in", "On battery".</summary>
     public string? Scope { get; init; }
 
+    /// <summary>The editor's label for the scope choice: "Applies when" (power) or "Applies to" (theme).</summary>
+    public string ScopeLabel { get; init; } = "Applies when";
+
+    /// <summary>The scope choice that covers every member: "Always" (power) or "Both" (theme).</summary>
+    public string AllScopesLabel { get; init; } = "Always";
+
     /// <summary>The name with its scope: "Screen off after (plugged in)". Just the name for a setting outside a family.</summary>
     public string DisplayName => Scope is null ? Name : $"{Name} ({Scope.ToLowerInvariant()})";
 

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using SetSett.Controls;
 using SetSett.Model;
 using SetSett.Services;
 using SetSett.Settings;
@@ -32,7 +33,8 @@ public sealed partial class EditorWindow : WindowEx
         AppTitleBar.Title = Title;
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
+        ApplyChromeTheme();
+        ((FrameworkElement)Content).ActualThemeChanged += (_, _) => ApplyChromeTheme();
         WindowPlacementService.CenterOnPrimary(this, 980, 720);
         MinWidth = 760;
         MinHeight = 480;
@@ -50,6 +52,28 @@ public sealed partial class EditorWindow : WindowEx
 
         _ = SettingRegistry.RefreshAvailabilityAsync();
         RefreshList();
+    }
+
+    // The window follows the app theme, not the taskbar's. The title bar doesn't repaint its caption
+    // buttons when that flips, and the icons are single-color, so both are set by hand per theme.
+    private void ApplyChromeTheme()
+    {
+        bool light = ((FrameworkElement)Content).ActualTheme == ElementTheme.Light;
+        string icon = light ? "AppIcon-dark.ico" : "AppIcon.ico";
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", icon));
+        AppTitleBar.IconSource = new ImageIconSource { ImageSource = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri($"ms-appx:///Assets/{icon}")) };
+
+        var bar = AppWindow.TitleBar;
+        Windows.UI.Color fore = light ? Microsoft.UI.Colors.Black : Microsoft.UI.Colors.White;
+        Windows.UI.Color hover = Windows.UI.Color.FromArgb(light ? (byte)0x1A : (byte)0x26, fore.R, fore.G, fore.B);
+        bar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
+        bar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+        bar.ButtonForegroundColor = fore;
+        bar.ButtonHoverForegroundColor = fore;
+        bar.ButtonPressedForegroundColor = fore;
+        bar.ButtonInactiveForegroundColor = Windows.UI.Color.FromArgb(0x80, fore.R, fore.G, fore.B);
+        bar.ButtonHoverBackgroundColor = hover;
+        bar.ButtonPressedBackgroundColor = Windows.UI.Color.FromArgb(0x33, fore.R, fore.G, fore.B);
     }
 
     /// <summary>Selects a setter by id, or the first one.</summary>
@@ -372,7 +396,7 @@ public sealed partial class EditorWindow : WindowEx
         }
 
         if (item.Content is Grid grid && grid.Children.Count == 2 &&
-            grid.Children[0] is FontIcon icon && grid.Children[1] is StackPanel text)
+            grid.Children[0] is GlyphView icon && grid.Children[1] is StackPanel text)
         {
             grid.Opacity = opacity;
             icon.Set(setter.Glyph);
@@ -384,7 +408,7 @@ public sealed partial class EditorWindow : WindowEx
             var layout = new Grid { ColumnSpacing = 12, Padding = new Thickness(0, 6, 0, 6), Opacity = opacity };
             layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            layout.Children.Add(new FontIcon { FontSize = 18, Width = EditorParts.GlyphSlot, VerticalAlignment = VerticalAlignment.Center }.Set(setter.Glyph));
+            layout.Children.Add(new GlyphView(18, EditorParts.GlyphSlot) { VerticalAlignment = VerticalAlignment.Center }.Set(setter.Glyph));
             var stack = new StackPanel();
             stack.Children.Add(new TextBlock { Text = name, TextTrimming = TextTrimming.CharacterEllipsis });
             stack.Children.Add(new TextBlock

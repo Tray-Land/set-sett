@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
+using SetSett.Controls;
 using SetSett.Engine;
 using SetSett.Model;
 using SetSett.Services;
@@ -50,7 +51,6 @@ public sealed partial class FlyoutPage : Page, IDisposable
         }
 
         StopRingTimer();
-        CloseSettings();
     }
 
     public void Dispose() => OnHidden();
@@ -266,7 +266,7 @@ public sealed partial class FlyoutPage : Page, IDisposable
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var icon = new FontIcon { FontSize = 20, VerticalAlignment = VerticalAlignment.Center }.Set(setter.Glyph);
+        var icon = new GlyphView(20) { VerticalAlignment = VerticalAlignment.Center }.Set(setter.Glyph);
         grid.Children.Add(icon);
 
         if (ring is not null)
@@ -334,21 +334,7 @@ public sealed partial class FlyoutPage : Page, IDisposable
 
     private void EditButton_Click(object sender, RoutedEventArgs e) => App.Current.ShowEditor();
 
-    private void SettingsButton_Click(object sender, RoutedEventArgs e)
-    {
-        // Location requests can take focus (a consent prompt) and hide the flyout mid-request, so the
-        // flyout's page only shows the place and links to the editor window's Settings page.
-        SettingsHost.Content = new SettingsView(inFlyout: true);
-        MainPanel.Visibility = Visibility.Collapsed;
-        SettingsPanel.Visibility = Visibility.Visible;
-    }
-
-    private void BackButton_Click(object sender, RoutedEventArgs e) => CloseSettings();
-
-    private void CloseSettings()
-    {
-        SettingsHost.Content = null;
-        SettingsPanel.Visibility = Visibility.Collapsed;
-        MainPanel.Visibility = Visibility.Visible;
-    }
+    // Settings live in the editor window only: location requests can raise a consent prompt that takes
+    // focus and hides the flyout mid-request.
+    private void SettingsButton_Click(object sender, RoutedEventArgs e) => App.Current.ShowSettings();
 }

@@ -6,10 +6,11 @@ namespace SetSett.Icons;
 public readonly record struct TimeLeft(double Share, DateTime? NextChangeUtc);
 
 /// <summary>
-/// A setter's own tray icon: its glyph in the taskbar's text color, full strength with a short bar
-/// underneath while it's on (like a running app on the taskbar), faded while it's off. While it runs
-/// with a set end, a <see cref="DurationIndicator"/> can take the bar's place: a donut around a
-/// smaller glyph, or a bar under or beside it, full at the start and empty at the end, over a faint track.
+/// A setter's own tray icon: its glyph in the taskbar's text color (or its own colors, for a multicolor
+/// emoji or a picture), full strength with a short bar underneath while it's on (like a running app on
+/// the taskbar), faded while it's off. While it runs with a set end, a <see cref="DurationIndicator"/>
+/// can take the bar's place: a donut around a smaller glyph, or a bar under or beside it, full at the
+/// start and empty at the end, over a faint track.
 /// </summary>
 public static class SetterIcon
 {
@@ -91,10 +92,35 @@ public static class SetterIcon
     /// <param name="bar">Draw the short "on" bar under the glyph (unless an indicator takes its place).</param>
     /// <param name="indicator">Drawn in place of the on bar; None for the plain icon. Pass None unless the setter runs.</param>
     /// <param name="share">The share of the run left, 0–1 (<see cref="Measure"/>).</param>
-    public static uint[] Compose(byte[] coverage, int size, uint color, bool dim, bool bar, DurationIndicator indicator, double share)
+    public static uint[] Compose(byte[] coverage, int size, uint color, bool dim, bool bar, DurationIndicator indicator, double share) =>
+        Compose(Tint(coverage, color), size, color, dim, bar, indicator, share);
+
+    /// <summary>Single-color ink as pixels for the other <c>Compose</c>.</summary>
+    public static uint[] Tint(byte[] coverage, uint color)
+    {
+        uint[] pixels = new uint[coverage.Length];
+        for (int i = 0; i < coverage.Length; i++)
+        {
+            if (coverage[i] != 0)
+            {
+                pixels[i] = WithAlpha(color, coverage[i] / 255.0);
+            }
+        }
+
+        return pixels;
+    }
+
+    /// <param name="art">The glyph's pixels in a <see cref="GlyphSize(int, DurationIndicator)"/>-square, row-major, 0xAARRGGBB with straight alpha. Its own colors are kept; only dimming changes them.</param>
+    /// <param name="size">Icon width and height in pixels.</param>
+    /// <param name="color">0xAARRGGBB for the on bar or indicator.</param>
+    /// <param name="dim">Draw the glyph faded (<see cref="OffOpacity"/>).</param>
+    /// <param name="bar">Draw the short "on" bar under the glyph (unless an indicator takes its place).</param>
+    /// <param name="indicator">Drawn in place of the on bar; None for the plain icon. Pass None unless the setter runs.</param>
+    /// <param name="share">The share of the run left, 0–1 (<see cref="Measure"/>).</param>
+    public static uint[] Compose(uint[] art, int size, uint color, bool dim, bool bar, DurationIndicator indicator, double share)
     {
         int glyph = GlyphSize(size, indicator);
-        ArgumentOutOfRangeException.ThrowIfNotEqual(coverage.Length, glyph * glyph, nameof(coverage));
+        ArgumentOutOfRangeException.ThrowIfNotEqual(art.Length, glyph * glyph, nameof(art));
 
         uint[] pixels = new uint[size * size];
         int centered = (size - glyph) / 2;
@@ -109,10 +135,10 @@ public static class SetterIcon
         {
             for (int x = 0; x < glyph; x++)
             {
-                byte ink = coverage[(y * glyph) + x];
-                if (ink != 0)
+                uint pixel = art[(y * glyph) + x];
+                if ((pixel >> 24) != 0)
                 {
-                    Paint(pixels, ((y + top) * size) + x + left, color, ink / 255.0 * strength);
+                    Paint(pixels, ((y + top) * size) + x + left, pixel, strength);
                 }
             }
         }
@@ -220,14 +246,28 @@ public static class SetterIcon
         }
     }
 
-    // Everything is one color, so where the glyph and an indicator overlap the stronger one wins.
+    // Paints over what's there. An indicator paints after the glyph, so a picture that reaches the
+    // corners of its square can't hide the time left.
     private static void Paint(uint[] pixels, int index, uint color, double coverage)
     {
-        uint painted = WithAlpha(color, coverage);
-        if ((painted >> 24) > (pixels[index] >> 24))
+        uint top = WithAlpha(color, coverage);
+        uint under = pixels[index];
+        if ((top >> 24) == 0)
         {
-            pixels[index] = painted;
+            return;
         }
+
+        if ((under >> 24) == 0)
+        {
+            pixels[index] = top;
+            return;
+        }
+
+        double topAlpha = (top >> 24) / 255.0;
+        double underAlpha = (under >> 24) / 255.0 * (1 - topAlpha);
+        double alpha = topAlpha + underAlpha;
+        uint Mix(int shift) => (uint)Math.Round((((top >> shift) & 0xFF) * topAlpha + ((under >> shift) & 0xFF) * underAlpha) / alpha) << shift;
+        pixels[index] = ((uint)Math.Round(alpha * 255) << 24) | Mix(16) | Mix(8) | Mix(0);
     }
 
     private static uint WithAlpha(uint color, double coverage)

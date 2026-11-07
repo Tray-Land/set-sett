@@ -68,10 +68,15 @@ public static class SetterImport
             return "The setter does not change any settings.";
         }
 
-        if (setter.When is null || setter.Until is null ||
+        if (setter.Glyph is null || setter.When is null || setter.Until is null ||
             setter.TimerChoices is null || setter.ActiveLook is null || setter.InactiveLook is null)
         {
             return "The setter definition is incomplete.";
+        }
+
+        if (!Glyphs.IsValid(setter.Glyph) || !Glyphs.IsValid(setter.ActiveLook.Glyph) || !Glyphs.IsValid(setter.InactiveLook.Glyph))
+        {
+            return "The setter's icon is not valid.";
         }
 
         HashSet<string> settings = new(StringComparer.OrdinalIgnoreCase);

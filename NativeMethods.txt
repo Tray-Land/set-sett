@@ -23,3 +23,10 @@ CreateIconFromResourceEx
 DestroyIcon
 GetSystemMetricsForDpi
 GetDpiForSystem
+D2D1CreateFactory
+DWriteCreateFactory
+ID2D1Factory
+ID2D1DCRenderTarget
+ID2D1SolidColorBrush
+IDWriteFactory
+IDWriteTextFormat

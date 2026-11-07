@@ -51,7 +51,8 @@ public enum IconColor
 
 /// <summary>
 /// How a setter's tray icon looks in one state (running or not): its glyph (null: the setter's own),
-/// its color, whether it's dimmed, and whether the short "on" bar sits under it.
+/// its color, whether it's dimmed, and whether the short "on" bar sits under it. A multicolor emoji or
+/// a picture keeps its own colors, so <see cref="Color"/> then only reaches the bar or indicator.
 /// </summary>
 public sealed record IconLook
 {
@@ -113,7 +114,10 @@ public sealed record Setter
 
     public string Name { get; set; } = "";
 
-    /// <summary>A Segoe Fluent Icons glyph, shown in the flyout and drawn as the tray icon.</summary>
+    /// <summary>
+    /// The icon shown in the flyout and drawn as the tray icon: a Segoe Fluent Icons glyph, an emoji in
+    /// one color or its own, or a picture from a file (<see cref="Glyphs.KindOf"/>).
+    /// </summary>
     public string Glyph { get; set; } = DefaultGlyph;
 
     public IReadOnlyList<SettingChange> Changes { get; set; } = [];

@@ -109,35 +109,5 @@
             </StackPanel>
         </ScrollViewer>
     </Grid>
-
-    <!--  Settings page: replaces the list until Back; built on demand, dropped when the flyout hides  -->
-    <Grid
-        x:Name="SettingsPanel"
-        RowSpacing="12"
-        Visibility="Collapsed">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-        <Grid ColumnSpacing="4">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <Button
-                AutomationProperties.Name="Back"
-                Click="BackButton_Click"
-                Style="{StaticResource FlyoutIconButtonStyle}"
-                ToolTipService.ToolTip="Back">
-                <FontIcon FontSize="14" Glyph="&#xE72B;" />
-            </Button>
-            <TextBlock
-                Grid.Column="1"
-                VerticalAlignment="Center"
-                Style="{StaticResource SubtitleTextBlockStyle}"
-                Text="Settings" />
-        </Grid>
-        <ContentPresenter x:Name="SettingsHost" Grid.Row="1" />
-    </Grid>
     </Grid>
 </Page>

@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
+using SetSett.Diagnostics;
 using SetSett.Model;
 
 namespace SetSett.Settings;
@@ -25,10 +26,14 @@ internal sealed partial class PersonalizeSetting(
     public SettingInfo Info { get; } = info;
 
     /// <summary>Light or dark, stored as 1 (light) or 0 (dark).</summary>
-    public static PersonalizeSetting Theme(string id, string name, string valueName, string description) => new(
-        new SettingInfo(id, name, "Personalization", Glyphs.Color, ValueKind.Choice)
+    public static PersonalizeSetting Theme(string id, string scope, string valueName, string description) => new(
+        new SettingInfo(id, "Theme", "Personalization", Glyphs.Color, ValueKind.Choice)
         {
             Description = description,
+            Family = "theme",
+            Scope = scope,
+            ScopeLabel = "Applies to",
+            AllScopesLabel = "Both",
             Choices = [new(SettingIds.Light, "Light"), new(SettingIds.Dark, "Dark")],
         },
         valueName,
@@ -53,8 +58,9 @@ internal sealed partial class PersonalizeSetting(
             int dword = key?.GetValue(valueName) is int value ? value : missingValue;
             return Task.FromResult<SettingValue?>(fromRegistry(dword));
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Personalize", $"Could not read {valueName}", ex);
             return Task.FromResult<SettingValue?>(null);
         }
     }
@@ -77,8 +83,9 @@ internal sealed partial class PersonalizeSetting(
             await Task.Run(() => SendMessageTimeout(HwndBroadcast, WmSettingChange, 0, "ImmersiveColorSet", SmtoAbortIfHung, 1000, out _));
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Personalize", "Could not write the personalization setting", ex);
             return false;
         }
     }

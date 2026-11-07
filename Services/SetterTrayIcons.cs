@@ -14,10 +14,11 @@ namespace SetSett.Services;
 /// <summary>
 /// One notification-area icon per setter that asks for one (<see cref="Setter.ShowTrayIcon"/>), the
 /// way tray-clock shows one icon per running timer. Each icon is the setter's glyph, drawn in the
-/// taskbar's text color: full with a bar underneath while on, faded while off. A click toggles a
-/// manual setter; an automatic one opens the flyout. A click-to-start timer's right-click menu also
-/// offers the lengths picked in the editor. Windows decides whether a new icon shows on the
-/// taskbar or in the overflow, and the app can't change that (docs\LIMITATIONS.md).
+/// taskbar's text color, or its own colors if it has them: full with a bar underneath while on,
+/// faded while off. A click toggles a manual setter; an automatic one opens the flyout. A
+/// click-to-start timer's right-click menu also offers the lengths picked in the editor. Windows
+/// decides whether a new icon shows on the taskbar or in the overflow, and the app can't change that
+/// (docs\LIMITATIONS.md).
 /// </summary>
 /// <remarks>
 /// A setter with a <see cref="Setter.Indicator"/> that's running with a set end draws the time left
@@ -40,10 +41,10 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
 
         public string Tooltip { get; set; } = "";
 
-        // The glyph's ink, kept so an indicator's redraws don't render the glyph again.
-        public string CoverageKey { get; set; } = "";
+        // The glyph's pixels, kept so an indicator's redraws don't render the glyph again.
+        public string ArtKey { get; set; } = "";
 
-        public byte[]? Coverage { get; set; }
+        public uint[]? Art { get; set; }
 
         public HICON Handle;
     }
@@ -101,7 +102,9 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
             IconLook look = run is not null ? setter.ActiveLook : setter.InactiveLook;
             string glyph = string.IsNullOrEmpty(look.Glyph) ? setter.Glyph : look.Glyph;
             uint color = LookColor(look.Color);
-            string key = $"{glyph}|{look.Dim}|{look.Bar}|{color}|{size}|{indicator}|{left.Share}";
+
+            // The glyph's hash: a picture's text runs to many KB, and this runs on every change.
+            string key = $"{glyph.GetHashCode()}|{look.Dim}|{look.Bar}|{color}|{size}|{indicator}|{left.Share}";
             if (key != slot.Key)
             {
                 Draw(slot, glyph, look, color, size, indicator, left.Share);
@@ -214,9 +217,25 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
             return menu;
         }
 
+        // Quit first: the top is farthest from the icon the menu opens from.
+        var quit = new MenuFlyoutItem { Text = "Quit", Icon = new FontIcon { Glyph = "" } };
+        quit.Click += (_, _) => exit();
+        menu.Items.Add(quit);
+        menu.Items.Add(new MenuFlyoutSeparator());
+
+        var edit = new MenuFlyoutItem { Text = "Edit setter", Icon = new FontIcon { Glyph = "" } };
+        edit.Click += (_, _) => editSetter(setterId);
+        menu.Items.Add(edit);
+
+        var open = new MenuFlyoutItem { Text = $"Open {App.DisplayName}", Icon = new FontIcon { Glyph = "" } };
+        open.Click += (_, _) => showFlyout();
+        menu.Items.Add(open);
+
         bool on = SetterHost.Run.IsActive(setterId);
         if (!setter.IsAutomatic || on || SetterHost.Run.IsPaused(setterId))
         {
+            menu.Items.Add(new MenuFlyoutSeparator());
+
             var toggle = new MenuFlyoutItem
             {
                 Text = on ? "Stop" : "Start",
@@ -244,24 +263,6 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
             AddTimerChoices(menu, setter, on);
         }
 
-        // Only enabled setters have an icon (Sync), so this is always Disable.
-        var disable = new MenuFlyoutItem { Text = "Disable", Icon = new FontIcon { Glyph = "" } };
-        disable.Click += (_, _) => SetterHost.SetEnabled(setterId, false);
-        menu.Items.Add(disable);
-
-        var edit = new MenuFlyoutItem { Text = "Edit setter", Icon = new FontIcon { Glyph = "" } };
-        edit.Click += (_, _) => editSetter(setterId);
-        var open = new MenuFlyoutItem { Text = $"Open {App.DisplayName}", Icon = new FontIcon { Glyph = "" } };
-        open.Click += (_, _) => showFlyout();
-        var quit = new MenuFlyoutItem { Text = "Quit", Icon = new FontIcon { Glyph = "" } };
-        quit.Click += (_, _) => exit();
-
-        // Edit and Open first: the top is farthest from the icon the menu opens from.
-        menu.Items.Insert(0, edit);
-        menu.Items.Insert(1, open);
-        menu.Items.Insert(2, new MenuFlyoutSeparator());
-        menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(quit);
         return menu;
     }
 
@@ -296,23 +297,21 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
         {
             menu.Items.Add(item);
         }
-
-        menu.Items.Add(new MenuFlyoutSeparator());
     }
 
     private static void Draw(Slot slot, string glyph, IconLook look, uint color, int size, DurationIndicator indicator, double share)
     {
         int glyphSize = SetterIcon.GlyphSize(size, indicator);
-        string coverageKey = $"{glyph}|{glyphSize}";
-        if (slot.Coverage is null || slot.CoverageKey != coverageKey)
+        string artKey = $"{glyph.GetHashCode()}|{glyphSize}|{color}";
+        if (slot.Art is null || slot.ArtKey != artKey)
         {
-            slot.Coverage = GlyphRenderer.Render(glyph, glyphSize)
-                ?? GlyphRenderer.Render(Setter.DefaultGlyph, glyphSize)
-                ?? new byte[glyphSize * glyphSize];
-            slot.CoverageKey = coverageKey;
+            slot.Art = GlyphRenderer.Render(glyph, glyphSize, color)
+                ?? GlyphRenderer.Render(Setter.DefaultGlyph, glyphSize, color)
+                ?? new uint[glyphSize * glyphSize];
+            slot.ArtKey = artKey;
         }
 
-        byte[] ico = IcoEncoder.Encode(SetterIcon.Compose(slot.Coverage, size, color, look.Dim, look.Bar, indicator, share), size);
+        byte[] ico = IcoEncoder.Encode(SetterIcon.Compose(slot.Art, size, color, look.Dim, look.Bar, indicator, share), size);
 
         HICON icon;
         unsafe

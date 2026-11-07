@@ -93,7 +93,7 @@ internal sealed partial class SetterEditor : UserControl
         ShowTrayIconDetails();
     }
 
-    // Enabled is the only field changed outside the editor (flyout card menu, tray icon menu). Take just that
+    // Enabled is the only field changed outside the editor (flyout card menu). Take just that
     // from the stored setter, so a stale copy can't re-enable it and nothing the user is typing is rebuilt.
     private void OnHostChanged()
     {
@@ -152,37 +152,17 @@ internal sealed partial class SetterEditor : UserControl
         Grid.SetColumn(nameLabel, 1);
         grid.Children.Add(nameLabel);
 
-        // A fixed box: Segoe UI Symbol's taller lines would otherwise make the header jump between setters.
-        var glyph = new FontIcon { FontSize = 16, Width = GlyphSlot, Height = GlyphSlot }.Set(_setter.Glyph);
+        // A fixed box: an emoji's taller lines would otherwise make the header jump between setters.
+        var glyph = new GlyphView(16, GlyphSlot).Set(_setter.Glyph);
         var iconButton = new DropDownButton { Content = glyph, VerticalAlignment = VerticalAlignment.Stretch };
         AutomationProperties.SetName(iconButton, "Icon");
         ToolTipService.SetToolTip(iconButton, "Pick an icon");
         Grid.SetRow(iconButton, 1);
-        var flyout = new Flyout();
-        var rows = new StackPanel { Spacing = 4 };
-        StackPanel? row = null;
-        for (int i = 0; i < Glyphs.Picker.Count; i++)
+        iconButton.Flyout = IconPicker.Create(this, _windowHandle, () => _setter.Glyph, choice =>
         {
-            if (i % 8 == 0)
-            {
-                row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-                rows.Children.Add(row);
-            }
-
-            string choice = Glyphs.Picker[i];
-            var button = new Button { Content = new FontIcon { FontSize = 18 }.Set(choice), Width = 44, Height = 40, Padding = new Thickness(0) };
-            AutomationProperties.SetName(button, $"Icon {i + 1}");
-            button.Click += (_, _) =>
-            {
-                glyph.Set(choice);
-                Commit(_setter with { Glyph = choice });
-                flyout.Hide();
-            };
-            row!.Children.Add(button);
-        }
-
-        flyout.Content = new ScrollViewer { Content = rows, MaxHeight = 360, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        iconButton.Flyout = flyout;
+            glyph.Set(choice);
+            Commit(_setter with { Glyph = choice });
+        });
         grid.Children.Add(iconButton);
 
         var name = new TextBox { Text = _setter.Name, PlaceholderText = "Name this setter" };
@@ -280,7 +260,7 @@ internal sealed partial class SetterEditor : UserControl
         List<(string Text, IReadOnlyList<string> Members)> options = [];
         if (free.Count == family.Count)
         {
-            options.Add(("Always", family));
+            options.Add((catalog.Find(family[0])?.Info.AllScopesLabel ?? "Always", family));
         }
 
         foreach (string member in free)
@@ -288,6 +268,7 @@ internal sealed partial class SetterEditor : UserControl
             options.Add((catalog.Find(member)!.Info.Scope ?? member, [member]));
         }
 
+        string scopeLabel = catalog.Find(family[0])?.Info.ScopeLabel ?? "Applies when";
         int selected = options.FindIndex(o => o.Members.SequenceEqual(line.Members));
         var combo = Combo(options.Select(o => o.Text), Math.Max(0, selected), i =>
         {
@@ -296,8 +277,8 @@ internal sealed partial class SetterEditor : UserControl
                 Commit(_setter with { Changes = SettingFamilies.Rescope(_setter.Changes, line, options[i].Members) });
                 BuildChanges();
             }
-        }, "Applies when", 130);
-        ToolTipService.SetToolTip(combo, "Applies when");
+        }, scopeLabel, 130);
+        ToolTipService.SetToolTip(combo, scopeLabel);
         return combo;
     }
 
@@ -455,11 +436,16 @@ internal sealed partial class SetterEditor : UserControl
         {
             int index = i;
             _start.Children.Add(ConditionEditors.Row(_setter.When[i], stop: false, startEditing: ReferenceEquals(_setter.When[i], _justAdded),
-                next => Commit(_setter with { When = [.. _setter.When.Select((c, j) => j == index ? next : c)] }),
+                next =>
+                {
+                    Commit(_setter with { When = [.. _setter.When.Select((c, j) => j == index ? next : c)] });
+                    BuildStop();
+                },
                 () =>
                 {
                     Commit(_setter with { When = [.. _setter.When.Where((_, j) => j != index)] });
                     BuildStart();
+                    BuildStop();
                 }));
         }
 
@@ -473,6 +459,7 @@ internal sealed partial class SetterEditor : UserControl
             _justAdded = condition;
             Commit(_setter with { When = [.. _setter.When, condition] });
             BuildStart();
+            BuildStop();
             _justAdded = null;
         }));
     }
@@ -502,6 +489,21 @@ internal sealed partial class SetterEditor : UserControl
             (false, true) => "It stops when you click it again, or on its own if any of these happens.",
             (false, false) => "It stops when you click it again. Add a way for it to stop on its own.",
         }));
+
+        // A start condition that is a span of time (hours, sunrise to sunset) also ends the setter. Show
+        // that here, read-only, so the stop list doesn't look empty of the thing that stops it.
+        if (_setter.IsAutomatic)
+        {
+            foreach (Condition start in _setter.When)
+            {
+                if (SetterText.EndsAt(start) is { } ends)
+                {
+                    _stop.Children.Add(Row(start is SunCondition ? Glyphs.Sun : Glyphs.Clock, $"At {ends}",
+                        Caption($"Set by “{SetterText.Condition(start)}” under When it starts. It does both: starts and stops."),
+                        null, remove: null));
+                }
+            }
+        }
 
         for (int i = 0; i < _setter.Until.Count; i++)
         {
@@ -595,7 +597,7 @@ internal sealed partial class SetterEditor : UserControl
         _looks.Children.Add(new TextBlock { Text = "How the icon looks" });
         _looks.Children.Add(LookRow("When it's on", () => _setter.ActiveLook, look => _setter with { ActiveLook = look }));
         _looks.Children.Add(LookRow("When it's off", () => _setter.InactiveLook, look => _setter with { InactiveLook = look }));
-        _looks.Children.Add(Caption("Each state can have its own icon and color, be dimmed, and show a small bar under it. By default it's full with a bar while it's on and faded while it's off."));
+        _looks.Children.Add(Caption("Each state can have its own icon and color, be dimmed, and show a small bar under it. By default it's full with a bar while it's on and faded while it's off. A multicolor emoji or a picture keeps its own colors, so the color only changes the bar."));
         panel.Children.Add(_looks);
 
         var style = Combo(["None", "Donut", "Horizontal bar", "Vertical bar"], Math.Max(0, Array.IndexOf(Indicators, _setter.Indicator)),
@@ -648,42 +650,25 @@ internal sealed partial class SetterEditor : UserControl
         var row = new WrapRow();
         row.Children.Add(new TextBlock { Text = title, Width = 96, VerticalAlignment = VerticalAlignment.Center });
 
-        var glyph = new FontIcon { FontSize = 16, Width = GlyphSlot, Height = GlyphSlot }.Set(string.IsNullOrEmpty(get().Glyph) ? _setter.Glyph : get().Glyph!);
+        string Shown() => string.IsNullOrEmpty(get().Glyph) ? _setter.Glyph : get().Glyph!;
+
+        var glyph = new GlyphView(16, GlyphSlot).Set(Shown());
         var glyphButton = new DropDownButton { Content = glyph, Height = 32 };
         AutomationProperties.SetName(glyphButton, $"Icon {title.ToLowerInvariant()}");
-        var flyout = new Flyout();
-        var rows = new StackPanel { Spacing = 4 };
-        var same = new Button { Content = "Same icon as the setter" };
-        same.Click += (_, _) =>
-        {
-            glyph.Set(_setter.Glyph);
-            Change(l => l with { Glyph = null });
-            flyout.Hide();
-        };
-        rows.Children.Add(same);
-        StackPanel? line = null;
-        for (int i = 0; i < Glyphs.Picker.Count; i++)
-        {
-            if (i % 8 == 0)
-            {
-                line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-                rows.Children.Add(line);
-            }
-
-            string choice = Glyphs.Picker[i];
-            var button = new Button { Content = new FontIcon { FontSize = 18 }.Set(choice), Width = 44, Height = 40, Padding = new Thickness(0) };
-            AutomationProperties.SetName(button, $"Icon {i + 1}");
-            button.Click += (_, _) =>
+        glyphButton.Flyout = IconPicker.Create(
+            this,
+            _windowHandle,
+            Shown,
+            choice =>
             {
                 glyph.Set(choice);
                 Change(l => l with { Glyph = choice });
-                flyout.Hide();
-            };
-            line!.Children.Add(button);
-        }
-
-        flyout.Content = new ScrollViewer { Content = rows, MaxHeight = 360, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        glyphButton.Flyout = flyout;
+            },
+            useSetterIcon: () =>
+            {
+                glyph.Set(_setter.Glyph);
+                Change(l => l with { Glyph = null });
+            });
         row.Children.Add(glyphButton);
 
         row.Children.Add(Combo(["Taskbar color", "Accent", "Red", "Orange", "Yellow", "Green", "Blue", "Purple"],

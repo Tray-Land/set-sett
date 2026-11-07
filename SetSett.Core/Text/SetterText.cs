@@ -99,6 +99,24 @@ public static class SetterText
         _ => "something",
     };
 
+    /// <summary>
+    /// How a start condition that is a span of time also ends the setter: "at sunset", "at 7:00 AM". Null for
+    /// conditions that don't name their own end, which need no entry under "When it stops".
+    /// </summary>
+    public static string? EndsAt(Condition condition)
+    {
+        switch (condition)
+        {
+            case SunCondition s:
+                return s.Phase == SunPhase.Night ? Offset(s.SunriseOffsetMinutes, "sunrise") : Offset(s.SunsetOffsetMinutes, "sunset");
+            case TimeWindowCondition t:
+                var ends = Week().Where(t.IsOn).Select(d => t.HoursOn(d).To).Distinct().ToList();
+                return ends.Count == 1 ? Time(ends[0]) : "the end of its hours";
+            default:
+                return null;
+        }
+    }
+
     /// <summary>A stop condition as an "until" phrase: "for 30 min", "until 5:00 PM", "until blender closes".</summary>
     public static string Until(Condition condition) => condition switch
     {

@@ -1,3 +1,4 @@
+using SetSett.Diagnostics;
 using SetSett.Model;
 
 namespace SetSett.Settings;
@@ -13,10 +14,10 @@ internal static class SettingRegistry
 
     public static ISettingCatalog Catalog { get; } = new SettingCatalog(
     [
-        PersonalizeSetting.Theme(SettingIds.WindowsTheme, "Windows mode", "SystemUsesLightTheme",
-            "The taskbar, Start, and other parts of Windows."),
-        PersonalizeSetting.Theme(SettingIds.AppsTheme, "App mode", "AppsUseLightTheme",
-            "Apps that follow the Windows app mode."),
+        PersonalizeSetting.Theme(SettingIds.WindowsTheme, "Windows", "SystemUsesLightTheme",
+            "Light or dark for Windows and apps. Pick Windows or Apps to set only one."),
+        PersonalizeSetting.Theme(SettingIds.AppsTheme, "Apps", "AppsUseLightTheme",
+            "Light or dark for Windows and apps. Pick Windows or Apps to set only one."),
         PersonalizeSetting.Toggle(SettingIds.Transparency, "Transparency effects", Glyphs.Color, "EnableTransparency",
             "See-through windows and surfaces."),
         new VolumeSetting(),
@@ -44,12 +45,15 @@ internal static class SettingRegistry
             {
                 availability[setting.Info.Id] = await setting.IsAvailableAsync();
             }
-            catch
+            catch (Exception ex)
             {
+                Log.Warn("Registry", $"Availability check for {setting.Info.Id} failed", ex);
                 availability[setting.Info.Id] = false;
             }
         }
 
         _availability = availability;
+        Log.Info("Registry", $"Settings available here: {availability.Count(p => p.Value)} of {availability.Count} " +
+            $"(unavailable: {string.Join(", ", availability.Where(p => !p.Value).Select(p => p.Key))})");
     }
 }

@@ -29,9 +29,69 @@ public static class SetterTemplates
     }
 }
 
-/// <summary>Segoe Fluent Icons glyphs offered in the editor's icon picker.</summary>
+/// <summary>What a setter's icon text (<see cref="Setter.Glyph"/>, <see cref="IconLook.Glyph"/>) stands for.</summary>
+public enum GlyphKind
+{
+    /// <summary>A Segoe Fluent Icons code point, in one color.</summary>
+    FontIcon,
+
+    /// <summary>An emoji drawn in one color, like a font icon. Plain emoji text, so older files read as this.</summary>
+    SolidEmoji,
+
+    /// <summary>An emoji in its own colors: <see cref="Glyphs.ColorEmojiPrefix"/> and the emoji.</summary>
+    ColorEmoji,
+
+    /// <summary>A picture from a file, in its own colors: see <see cref="Icons.IconPicture"/>.</summary>
+    Picture
+}
+
+/// <summary>The icon text setters save, and the Segoe Fluent Icons glyphs offered in the editor's icon picker.</summary>
 public static class Glyphs
 {
+    /// <summary>Starts the text of a <see cref="GlyphKind.ColorEmoji"/>. Saved in setters.json.</summary>
+    public const string ColorEmojiPrefix = "color:";
+
+    /// <summary>Starts the text of a <see cref="GlyphKind.Picture"/>. Saved in setters.json.</summary>
+    public const string PicturePrefix = "picture:";
+
+    // The longest emoji text accepted from a file. Family and flag sequences run to a dozen or so UTF-16 units.
+    private const int MaxEmojiLength = 32;
+
+    public static GlyphKind KindOf(string glyph)
+    {
+        if (glyph.StartsWith(PicturePrefix, StringComparison.Ordinal))
+        {
+            return GlyphKind.Picture;
+        }
+
+        if (glyph.StartsWith(ColorEmojiPrefix, StringComparison.Ordinal))
+        {
+            return GlyphKind.ColorEmoji;
+        }
+
+        return IsOutsidePrivateUse(glyph) ? GlyphKind.SolidEmoji : GlyphKind.FontIcon;
+    }
+
+    /// <summary>The icon text for <paramref name="emoji"/> in the chosen style.</summary>
+    public static string Emoji(string emoji, bool multicolor) => multicolor ? ColorEmojiPrefix + emoji : emoji;
+
+    /// <summary>The emoji itself, without the style. The text as it is for anything but a <see cref="GlyphKind.ColorEmoji"/>.</summary>
+    public static string EmojiText(string glyph) =>
+        KindOf(glyph) == GlyphKind.ColorEmoji ? glyph[ColorEmojiPrefix.Length..] : glyph;
+
+    /// <summary>False for icon text from a file that nothing here should try to draw. Null is fine: a state with no icon of its own.</summary>
+    public static bool IsValid(string? glyph)
+    {
+        if (string.IsNullOrEmpty(glyph))
+        {
+            return true;
+        }
+
+        return KindOf(glyph) == GlyphKind.Picture
+            ? Icons.IconPicture.TryDecode(glyph) is not null
+            : glyph.Length <= ColorEmojiPrefix.Length + MaxEmojiLength;
+    }
+
     public const string Settings = "";
     public const string Sun = "";
     public const string Moon = "";
@@ -63,11 +123,11 @@ public static class Glyphs
     public const string Cloud = "";
     public const string Folder = "";
 
-    /// <summary>Hot beverage emoji (Segoe UI Emoji), for keep-awake style setters.</summary>
+    /// <summary>Hot beverage emoji, for keep-awake style setters.</summary>
     public const string Coffee = "☕";
 
-    /// <summary>True when <paramref name="glyph"/> is an emoji to draw with Segoe UI Emoji, not a Segoe Fluent Icons code point (private use area). Add more by putting any Segoe UI Emoji character in <see cref="Picker"/>.</summary>
-    public static bool IsEmoji(string glyph) => glyph.Length > 0 && !(glyph[0] >= '' && glyph[0] <= '');
+    // Segoe Fluent Icons code points are all in the private use area. Anything else is emoji text.
+    private static bool IsOutsidePrivateUse(string glyph) => glyph.Length > 0 && !(glyph[0] >= '' && glyph[0] <= '');
 
     public static readonly IReadOnlyList<string> Picker =
     [
