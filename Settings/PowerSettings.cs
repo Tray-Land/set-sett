@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Microsoft.Windows.System.Power;
+using SetSett.Diagnostics;
 using SetSett.Model;
 
 namespace SetSett.Settings;
@@ -60,8 +61,9 @@ internal sealed partial class PowerTimeoutSetting(SettingInfo info, Guid subgrou
         {
             hasBattery = PowerManager.BatteryStatus != BatteryStatus.NotPresent;
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Power", "Could not tell whether this PC has a battery", ex);
             hasBattery = false;
         }
 
@@ -109,8 +111,9 @@ internal sealed partial class PowerTimeoutSetting(SettingInfo info, Guid subgrou
             LocalFree(pointer);
             return scheme;
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Power", "Could not read the active power scheme", ex);
             return null;
         }
     }
@@ -176,27 +179,110 @@ internal sealed partial class KeepAwakeSetting : ISetting
             return Task.FromResult(false);
         }
 
-        if (!EnsureRequest())
-        {
-            return Task.FromResult(false);
-        }
-
-        PowerClearRequest(_request, PowerRequestSystemRequired);
-        PowerClearRequest(_request, PowerRequestDisplayRequired);
-        bool ok = choice.Id switch
-        {
-            SettingIds.AwakeSystem => PowerSetRequest(_request, PowerRequestSystemRequired),
-            SettingIds.AwakeDisplay => PowerSetRequest(_request, PowerRequestSystemRequired) && PowerSetRequest(_request, PowerRequestDisplayRequired),
-            _ => true,
-        };
-
+        // Two independent holds, the way Windows' own apps do it: a power request (what
+        // `powercfg /requests` names) and a thread execution state (what Caffeinated and most
+        // keep-awake tools use). Some managed PCs honor only one, so a hold is good if either took.
+        bool request = ApplyPowerRequest(choice.Id);
+        bool state = ApplyExecutionState(choice.Id);
+        bool ok = request || state;
         if (ok)
         {
             _current = choice.Id;
         }
+        else
+        {
+            Log.Warn("KeepAwake", $"Neither the power request nor the execution state took ({choice.Id})");
+        }
 
+        Log.Info("KeepAwake", $"{choice.Id}: power request {(request ? "set" : "FAILED")}, execution state {(state ? "set" : "FAILED")}");
         return Task.FromResult(ok);
     }
+
+    private bool ApplyPowerRequest(string mode)
+    {
+        try
+        {
+            if (!EnsureRequest())
+            {
+                Log.Warn("KeepAwake", $"PowerCreateRequest failed (error {Marshal.GetLastPInvokeError()})");
+                return false;
+            }
+
+            PowerClearRequest(_request, PowerRequestSystemRequired);
+            PowerClearRequest(_request, PowerRequestDisplayRequired);
+            return mode switch
+            {
+                SettingIds.AwakeSystem => PowerSetRequest(_request, PowerRequestSystemRequired),
+                SettingIds.AwakeDisplay => PowerSetRequest(_request, PowerRequestSystemRequired)
+                    && PowerSetRequest(_request, PowerRequestDisplayRequired),
+                _ => true,
+            };
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("KeepAwake", "Power request failed", ex);
+            return false;
+        }
+    }
+
+    // SetThreadExecutionState with ES_CONTINUOUS lasts only as long as the calling thread, so it
+    // runs on one dedicated thread that stays alive (a pool or UI thread could end or be swapped).
+    private bool ApplyExecutionState(string mode)
+    {
+        uint flags = EsContinuous | mode switch
+        {
+            SettingIds.AwakeSystem => EsSystemRequired,
+            SettingIds.AwakeDisplay => EsSystemRequired | EsDisplayRequired,
+            _ => 0u,
+        };
+
+        try
+        {
+            var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (_stateLock)
+            {
+                _stateWork.Enqueue((flags, done));
+                if (_stateThread is null)
+                {
+                    _stateThread = new Thread(StateLoop) { IsBackground = true, Name = "SetSett keep awake" };
+                    _stateThread.Start();
+                }
+            }
+
+            _stateSignal.Release();
+            return done.Task.Wait(TimeSpan.FromSeconds(5)) && done.Task.Result;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("KeepAwake", "Execution state failed", ex);
+            return false;
+        }
+    }
+
+    private void StateLoop()
+    {
+        while (true)
+        {
+            _stateSignal.Wait();
+            (uint flags, TaskCompletionSource<bool> done) work;
+            lock (_stateLock)
+            {
+                work = _stateWork.Dequeue();
+            }
+
+            // A zero return means the call failed.
+            work.done.TrySetResult(SetThreadExecutionState(work.flags) != 0);
+        }
+    }
+
+    private const uint EsContinuous = 0x80000000;
+    private const uint EsSystemRequired = 0x1;
+    private const uint EsDisplayRequired = 0x2;
+
+    private readonly object _stateLock = new();
+    private readonly Queue<(uint Flags, TaskCompletionSource<bool> Done)> _stateWork = new();
+    private readonly SemaphoreSlim _stateSignal = new(0);
+    private Thread? _stateThread;
 
     private unsafe bool EnsureRequest()
     {
@@ -234,6 +320,9 @@ internal sealed partial class KeepAwakeSetting : ISetting
     }
 
     [LibraryImport("kernel32.dll")]
+    private static partial uint SetThreadExecutionState(uint flags);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial nint PowerCreateRequest(ref ReasonContext context);
 
     [LibraryImport("kernel32.dll")]
