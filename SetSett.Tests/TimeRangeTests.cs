@@ -185,6 +185,23 @@ public sealed class TimeRangeFormatTests
     }
 
     [TestMethod]
+    public void FormatTime_FollowsTheChosenClockInAnyCulture()
+    {
+        var german = CultureInfo.GetCultureInfo("de-DE");
+        var french = CultureInfo.GetCultureInfo("fr-FR");
+        var american = CultureInfo.GetCultureInfo("en-US");
+
+        // A 24-hour culture whose user picked the 12-hour clock still gets readable AM/PM, and the reverse.
+        Assert.AreEqual("9:30 PM", TimeRangeFormat.FormatTime(H(21.5), german, false));
+        Assert.AreEqual("9:30 PM", TimeRangeFormat.FormatTime(H(21.5), french, false));
+        Assert.AreEqual("6 PM", TimeRangeFormat.FormatHour(18, french, false));
+        Assert.AreEqual("21:30", TimeRangeFormat.FormatTime(H(21.5), american, true));
+        Assert.AreEqual("18:00", TimeRangeFormat.FormatHour(18, american, true));
+        Assert.IsTrue(TimeRangeFormat.Is24Hour(german));
+        Assert.IsFalse(TimeRangeFormat.Is24Hour(american));
+    }
+
+    [TestMethod]
     public void FormatHour_LabelsAxisHours()
     {
         Assert.AreEqual("12 AM", TimeRangeFormat.FormatHour(0, Culture, false));

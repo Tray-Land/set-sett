@@ -83,7 +83,6 @@ public sealed partial class TimeRangePicker : Control
     public static readonly DependencyProperty CalendarHeightProperty = DependencyProperty.Register(
         nameof(CalendarHeight), typeof(double), typeof(TimeRangePicker), new PropertyMetadata(320d));
 
-    private static bool? _systemUses24Hour;
 
     private bool _isApplying;
     private TimeRangeValue _announced;
@@ -122,8 +121,11 @@ public sealed partial class TimeRangePicker : Control
     /// <summary>Raised once when an edit finishes (pointer released, key pressed, text entered). Save on this one.</summary>
     public event TypedEventHandler<TimeRangePicker, TimeRangeChangedEventArgs>? ValueCommitted;
 
-    /// <summary>Whether times show as 24-hour, following the Windows clock setting (read once).</summary>
-    public static bool Use24Hour => _systemUses24Hour ??= SystemUses24Hour();
+    /// <summary>
+    /// Whether times show as 24-hour. It follows the short time pattern of the user's regional format, which carries any
+    /// change they made under Settings > Time &amp; language > Region (the language's default clock does not).
+    /// </summary>
+    public static bool Use24Hour => TimeRangeFormat.Is24Hour(CultureInfo.CurrentCulture);
 
     public TimeSpan Start
     {
@@ -618,7 +620,7 @@ public sealed partial class TimeRangePicker : Control
         _dragPointerId = pointer.PointerId;
         surface.CapturePointer(pointer);
 
-        if (!wrap && _calendarScroller is not null)
+        if (Mode == TimeRangePickerMode.Calendar && _calendarScroller is not null)
         {
             _calendarScroller.VerticalScrollMode = ScrollMode.Disabled;
         }
@@ -750,20 +752,4 @@ public sealed partial class TimeRangePicker : Control
         }
     }
 
-    private static bool SystemUses24Hour()
-    {
-        try
-        {
-            if (GlobalizationPreferences.Clocks.FirstOrDefault() is { } clock)
-            {
-                return clock == "24HourClock";
-            }
-        }
-        catch (Exception)
-        {
-            // Fall through to the culture's pattern.
-        }
-
-        return TimeRangeFormat.Is24Hour(CultureInfo.CurrentCulture);
-    }
 }

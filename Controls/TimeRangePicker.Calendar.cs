@@ -12,19 +12,23 @@ using Shapes = Microsoft.UI.Xaml.Shapes;
 
 namespace SetSett.Controls;
 
-// Calendar mode: a vertical timeline covering this day and the next (48h), so a block can run past midnight.
+// Calendar mode: a vertical timeline of one day (24h). A block that runs past midnight is drawn in two parts, the
+// first to the bottom and the rest from the top, and edits wrap round midnight as they do on the dial.
 // One pixel is one minute.
 public sealed partial class TimeRangePicker
 {
     private const double CalendarGutterWidth = 60;
     private const double CalendarPad = 14;
-    private const double CalendarMinutes = 2 * 24 * 60;
+    private const double CalendarMinutes = 24 * 60;
 
-    /// <summary>The <see cref="CalendarHeight"/> at which the whole 48-hour axis fits, leaving nothing to scroll inside the picker.</summary>
-    public const double CalendarFullHeight = CalendarMinutes + 2 * CalendarPad + 2;
+    /// <summary>Pixels per minute on the calendar axis: half a pixel, so an hour is 30 px and a 15-minute step 7.5 px.</summary>
+    private const double CalendarScale = 0.5;
+
+    /// <summary>The <see cref="CalendarHeight"/> at which the whole 24-hour axis fits, leaving nothing to scroll inside the picker.</summary>
+    public const double CalendarFullHeight = CalendarMinutes * CalendarScale + 2 * CalendarPad + 2;
 
     /// <summary>The y of a time on the calendar axis, so a parent can draw its own shared hour labels in line with the pickers.</summary>
-    public static double CalendarAxisY(double minutes) => CalendarPad + minutes;
+    public static double CalendarAxisY(double minutes) => CalendarPad + minutes * CalendarScale;
     private const double HandleReach = 24;
     private const double TouchHold = 350;
     private const double TouchSlop = 10;
@@ -34,10 +38,12 @@ public sealed partial class TimeRangePicker
 
     private bool _calendarBuilt;
     private readonly List<Shapes.Rectangle> _hourLines = [];
-    private Shapes.Rectangle? _nextDayShade;
+    private readonly List<Shapes.Rectangle> _nightBands = [];
     private Shapes.Rectangle? _pointLine;
     private CursorBorder? _block;
     private TextBlock? _blockText;
+    private CursorBorder? _blockWrap;
+    private TextBlock? _blockWrapText;
     private Border? _bubble;
     private TextBlock? _bubbleText;
     private TimeHandle? _calendarStart;
@@ -58,10 +64,14 @@ public sealed partial class TimeRangePicker
 
     private double CalendarGutter => ShowTimeAxis ? CalendarGutterWidth : 0;
 
-    private static double MinutesToY(double minutes) => CalendarPad + minutes;
+    private static double MinutesToY(double minutes) => CalendarAxisY(minutes);
+
+    /// <summary>Where a time sits on the one-day axis: an end past midnight shows on the next pass from the top.</summary>
+    private static double DisplayMinutes(TimeSpan time) =>
+        time > TimeRangeMath.Day ? (time - TimeRangeMath.Day).TotalMinutes : time.TotalMinutes;
 
     private static TimeSpan CalendarTimeAt(double y) =>
-        TimeSpan.FromMinutes(Math.Clamp(y - CalendarPad, 0, CalendarMinutes));
+        TimeSpan.FromMinutes(Math.Clamp((y - CalendarPad) / CalendarScale, 0, CalendarMinutes));
 
     private void EnsureCalendar()
     {
@@ -74,16 +84,25 @@ public sealed partial class TimeRangePicker
         var culture = CultureInfo.CurrentCulture;
         var use24Hour = Use24Hour;
 
-        canvas.Height = CalendarMinutes + 2 * CalendarPad;
+        var canvasHeight = CalendarMinutes * CalendarScale + 2 * CalendarPad;
+        canvas.Height = canvasHeight;
         canvas.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
 
-        var shade = new Shapes.Rectangle { IsHitTestVisible = false };
-        Themed("SubtleFillColorSecondaryBrush", b => shade.Fill = b);
-        _nextDayShade = shade;
-        canvas.Children.Add(shade);
+        // Night (6 PM to 6 AM) is shaded and day is left plain, so the eye can find where it is in the 24 hours.
+        // They go in first so everything else draws over them.
+        _nightBands.Clear();
+        foreach (var (top, bottom) in new[] { (0d, MinutesToY(6 * 60)), (MinutesToY(18 * 60), canvasHeight) })
+        {
+            var band = new Shapes.Rectangle { IsHitTestVisible = false, Height = bottom - top };
+            Themed("SubtleFillColorSecondaryBrush", b => band.Fill = b);
+            Canvas.SetLeft(band, CalendarGutter);
+            Canvas.SetTop(band, top);
+            _nightBands.Add(band);
+            canvas.Children.Add(band);
+        }
 
         _hourLines.Clear();
-        for (var hour = 0; hour <= 48; hour++)
+        for (var hour = 0; hour <= 24; hour++)
         {
             var line = new Shapes.Rectangle { Height = 1, IsHitTestVisible = false };
             Themed("DividerStrokeColorDefaultBrush", b => line.Fill = b);
@@ -111,44 +130,35 @@ public sealed partial class TimeRangePicker
             canvas.Children.Add(label);
         }
 
-        if (ShowTimeAxis)
+        // Without the axis the column is narrow, so the label wraps and sits below the start handle.
+        (CursorBorder Block, TextBlock Text) MakeBlock(Thickness textMargin)
         {
-            // Under the midnight label in the gutter, where the block cannot cover it.
-            var nextDay = new TextBlock
+            var text = new TextBlock
             {
-                Text = "Next day",
-                Width = CalendarGutter - 10,
-                TextAlignment = TextAlignment.Right,
-                FontSize = 11,
+                FontSize = 12,
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = textMargin,
                 IsHitTestVisible = false,
             };
-            Themed("TextFillColorTertiaryBrush", b => nextDay.Foreground = b);
-            Canvas.SetLeft(nextDay, 0);
-            Canvas.SetTop(nextDay, MinutesToY(24 * 60) + 10);
-            canvas.Children.Add(nextDay);
+            Themed("TextOnAccentFillColorPrimaryBrush", b => text.Foreground = b);
+            var shape = new CursorBorder { CornerRadius = new CornerRadius(6), Opacity = BlockOpacity };
+            shape.Children.Add(text);
+            shape.SetCursor(InputSystemCursorShape.SizeAll);
+
+            // Claim touch from the start (see OnCalendarPointerPressed); the claim cannot be added after the finger is down.
+            shape.ManipulationMode = ManipulationModes.TranslateX | ManipulationModes.TranslateY;
+            Themed("AccentFillColorDefaultBrush", b => shape.Background = b);
+            canvas.Children.Add(shape);
+            return (shape, text);
         }
 
-        // Without the axis the column is narrow, so the label wraps and sits below the start handle.
-        var blockText = new TextBlock
-        {
-            FontSize = 12,
-            TextAlignment = TextAlignment.Center,
-            TextWrapping = TextWrapping.Wrap,
-            VerticalAlignment = VerticalAlignment.Top,
-            Margin = ShowTimeAxis ? new Thickness(36, 6, 36, 2) : new Thickness(6, 18, 6, 2),
-            IsHitTestVisible = false,
-        };
-        Themed("TextOnAccentFillColorPrimaryBrush", b => blockText.Foreground = b);
-        var block = new CursorBorder { CornerRadius = new CornerRadius(6), Opacity = BlockOpacity };
-        block.Children.Add(blockText);
-        block.SetCursor(InputSystemCursorShape.SizeAll);
+        (_block, _blockText) = MakeBlock(ShowTimeAxis ? new Thickness(36, 6, 36, 2) : new Thickness(6, 18, 6, 2));
 
-        // Claim touch from the start (see OnCalendarPointerPressed); the claim cannot be added after the finger is down.
-        block.ManipulationMode = ManipulationModes.TranslateX | ManipulationModes.TranslateY;
-        Themed("AccentFillColorDefaultBrush", b => block.Background = b);
-        _block = block;
-        _blockText = blockText;
-        canvas.Children.Add(block);
+        // The part of a block that runs past midnight, drawn from the top of the axis. The end handle sits at its bottom.
+        (_blockWrap, _blockWrapText) = MakeBlock(new Thickness(ShowTimeAxis ? 36 : 6, 6, ShowTimeAxis ? 36 : 6, ShowTimeAxis ? 2 : 20));
+        _blockWrap.Visibility = Visibility.Collapsed;
 
         var pointLine = new Shapes.Rectangle { Height = 2, IsHitTestVisible = false };
         Themed("AccentFillColorDefaultBrush", b => pointLine.Fill = b);
@@ -205,12 +215,9 @@ public sealed partial class TimeRangePicker
             line.Width = lineWidth;
         }
 
-        if (_nextDayShade is { } shade)
+        foreach (var band in _nightBands)
         {
-            shade.Width = lineWidth;
-            shade.Height = 24 * 60 + CalendarPad;
-            Canvas.SetLeft(shade, CalendarGutter);
-            Canvas.SetTop(shade, MinutesToY(24 * 60));
+            band.Width = lineWidth;
         }
 
         UpdateCalendar(Value);
@@ -219,7 +226,8 @@ public sealed partial class TimeRangePicker
     private void UpdateCalendar(TimeRangeValue value)
     {
         if (!_calendarBuilt || _calendarCanvas is not { Width: > 0 } canvas ||
-            _block is null || _blockText is null || _pointLine is null || _calendarStart is null || _calendarEnd is null)
+            _block is null || _blockText is null || _blockWrap is null || _blockWrapText is null ||
+            _pointLine is null || _calendarStart is null || _calendarEnd is null)
         {
             return;
         }
@@ -233,8 +241,12 @@ public sealed partial class TimeRangePicker
 
         if (value.End is { } end)
         {
-            var endY = MinutesToY(end.TotalMinutes);
-            var height = Math.Max(2, endY - startY);
+            // Past midnight the block continues from the top: the first part runs to the bottom of the axis.
+            var endY = MinutesToY(DisplayMinutes(end));
+            var firstEndY = end > TimeRangeMath.Day ? MinutesToY(CalendarMinutes) : endY;
+            var height = Math.Max(2, firstEndY - startY);
+            var label = TimeRangeFormat.FormatRange(value, CultureInfo.CurrentCulture, Use24Hour);
+            var duration = TimeRangeFormat.FormatDuration(value.Duration);
 
             Canvas.SetLeft(_block, left);
             Canvas.SetTop(_block, startY);
@@ -245,10 +257,26 @@ public sealed partial class TimeRangePicker
 
             // A narrow column (no time axis) needs more room above the label for the start handle, and wraps it.
             var labelTop = ShowTimeAxis ? 22 : 40;
-            _blockText.Text = TimeRangeFormat.FormatRange(value, CultureInfo.CurrentCulture, Use24Hour) +
-                (height >= 40 ? $"\n{TimeRangeFormat.FormatDuration(value.Duration)}" : string.Empty);
+            _blockText.Text = label + (height >= 40 ? $"\n{duration}" : string.Empty);
             _blockText.Visibility = height >= labelTop ? Visibility.Visible : Visibility.Collapsed;
             _blockText.MaxHeight = Math.Max(0, height - (ShowTimeAxis ? 8 : 20));
+
+            if (end > TimeRangeMath.Day)
+            {
+                var wrapHeight = Math.Max(2, endY - MinutesToY(0));
+                Canvas.SetLeft(_blockWrap, left);
+                Canvas.SetTop(_blockWrap, MinutesToY(0));
+                _blockWrap.Width = right - left;
+                _blockWrap.Height = wrapHeight;
+                _blockWrap.Visibility = Visibility.Visible;
+                _blockWrapText.Text = label + (wrapHeight >= 40 ? $"\n{duration}" : string.Empty);
+                _blockWrapText.Visibility = wrapHeight >= labelTop ? Visibility.Visible : Visibility.Collapsed;
+                _blockWrapText.MaxHeight = Math.Max(0, wrapHeight - (ShowTimeAxis ? 8 : 20));
+            }
+            else
+            {
+                _blockWrap.Visibility = Visibility.Collapsed;
+            }
 
             _calendarEndCenter = new Point(right - 22, endY);
             PlaceHandle(_calendarEnd, _calendarEndCenter);
@@ -257,6 +285,7 @@ public sealed partial class TimeRangePicker
         else
         {
             _block.Visibility = Visibility.Collapsed;
+            _blockWrap.Visibility = Visibility.Collapsed;
             _calendarEnd.Visibility = Visibility.Collapsed;
 
             _pointLine.Width = right - left;
@@ -293,8 +322,26 @@ public sealed partial class TimeRangePicker
         _bubbleText.Text = TimeRangeFormat.FormatTime(time, CultureInfo.CurrentCulture, Use24Hour);
         _bubble.Visibility = Visibility.Visible;
         _bubble.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        Canvas.SetLeft(_bubble, ShowTimeAxis ? 2 : CalendarGutter + 34);
-        Canvas.SetTop(_bubble, MinutesToY(time.TotalMinutes) - _bubble.DesiredSize.Height / 2);
+        var y = MinutesToY(DisplayMinutes(time));
+        if (ShowTimeAxis)
+        {
+            // The axis gutter is clear of the handles, so the bubble sits beside the edge being moved.
+            Canvas.SetLeft(_bubble, 2);
+            Canvas.SetTop(_bubble, y - _bubble.DesiredSize.Height / 2);
+            return;
+        }
+
+        // A narrow column has no gutter: put the bubble just outside the block, past the handle (above the start
+        // edge, below the end edge), centered on the handle, so it never covers it.
+        var handle = _drag == DragKind.End ? _calendarEnd : _calendarStart;
+        var center = _drag == DragKind.End ? _calendarEndCenter : _calendarStartCenter;
+        var clear = (handle?.Height ?? 28) / 2 + 2;
+        var maxLeft = Math.Max(0, (_calendarCanvas?.Width ?? 0) - _bubble.DesiredSize.Width);
+        Canvas.SetLeft(_bubble, Math.Clamp(center.X - _bubble.DesiredSize.Width / 2, 0, maxLeft));
+        var bottomLimit = CalendarMinutes * CalendarScale + 2 * CalendarPad - _bubble.DesiredSize.Height;
+        Canvas.SetTop(_bubble, _drag == DragKind.End
+            ? Math.Min(y + clear, bottomLimit)
+            : Math.Max(0, y - clear - _bubble.DesiredSize.Height));
     }
 
     private void ScrollCalendarToValue()
@@ -305,7 +352,7 @@ public sealed partial class TimeRangePicker
         }
 
         // A viewport tall enough for the whole day starts at midnight; otherwise leave an hour of context above the block.
-        var wholeDay = scroller.ActualHeight >= 24 * 60 + 2 * CalendarPad;
+        var wholeDay = scroller.ActualHeight >= CalendarMinutes * CalendarScale + 2 * CalendarPad;
         var target = wholeDay ? 0 : Math.Max(0, MinutesToY(Value.Start.TotalMinutes - 60));
         scroller.ChangeView(null, target, null, disableAnimation: true);
     }
@@ -333,12 +380,12 @@ public sealed partial class TimeRangePicker
         {
             case DragKind.Start:
                 FocusHandle(DragKind.Start);
-                BeginPointerDrag(DragKind.Start, e.Pointer, canvas, time, wrap: false);
+                BeginPointerDrag(DragKind.Start, e.Pointer, canvas, time, wrap: true);
                 break;
 
             case DragKind.End:
                 FocusHandle(DragKind.End);
-                BeginPointerDrag(DragKind.End, e.Pointer, canvas, time, wrap: false);
+                BeginPointerDrag(DragKind.End, e.Pointer, canvas, time, wrap: true);
                 break;
 
             case DragKind.Range when touch:
@@ -358,7 +405,7 @@ public sealed partial class TimeRangePicker
 
             case DragKind.Range:
                 FocusHandle(DragKind.Start);
-                BeginPointerDrag(DragKind.Range, e.Pointer, canvas, time, wrap: false);
+                BeginPointerDrag(DragKind.Range, e.Pointer, canvas, time, wrap: true);
                 break;
 
             default:
@@ -372,7 +419,7 @@ public sealed partial class TimeRangePicker
                     // Click places the start, and dragging from there stretches the end, as in calendar apps.
                     var placed = PlaceAt(time);
                     FocusHandle(DragKind.Start);
-                    BeginPointerDrag(placed.IsRange ? DragKind.End : DragKind.Start, e.Pointer, canvas, time, wrap: false);
+                    BeginPointerDrag(placed.IsRange ? DragKind.End : DragKind.Start, e.Pointer, canvas, time, wrap: true);
                 }
 
                 break;
@@ -400,7 +447,10 @@ public sealed partial class TimeRangePicker
             return !touch && Math.Abs(position.Y - startY) <= 12 ? DragKind.Start : DragKind.None;
         }
 
-        return position.Y >= startY && position.Y <= MinutesToY(end.TotalMinutes) ? DragKind.Range : DragKind.None;
+        // A block past midnight also covers the top of the axis, down to where it ends.
+        var inFirst = position.Y >= startY && position.Y <= MinutesToY(Math.Min(end.TotalMinutes, CalendarMinutes));
+        var inWrapped = end > TimeRangeMath.Day && position.Y <= MinutesToY(DisplayMinutes(end));
+        return inFirst || inWrapped ? DragKind.Range : DragKind.None;
     }
 
     /// <summary>Moves the start to the clicked time, keeping the length.</summary>
@@ -504,7 +554,7 @@ public sealed partial class TimeRangePicker
         _pending = null;
         FocusHandle(DragKind.Start);
         SetBlockLifted(true);
-        BeginPointerDrag(DragKind.Range, pending.Pointer, canvas, CalendarTimeAt(pending.Position.Y), wrap: false);
+        BeginPointerDrag(DragKind.Range, pending.Pointer, canvas, CalendarTimeAt(pending.Position.Y), wrap: true);
         UpdateBubble(Value);
     }
 

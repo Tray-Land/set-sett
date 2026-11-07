@@ -14,11 +14,45 @@ public static partial class TimeRangeFormat
     public static bool Is24Hour(CultureInfo culture) => culture.DateTimeFormat.ShortTimePattern.Contains('H');
 
     public static string FormatTime(TimeSpan timeOfDay, CultureInfo culture, bool use24Hour) =>
-        (DateTime.MinValue + TimeRangeMath.WrapToDay(timeOfDay)).ToString(use24Hour ? "HH:mm" : "h:mm tt", culture);
+        Format(TimeRangeMath.WrapToDay(timeOfDay), culture, use24Hour, wholeHour: false);
 
     /// <summary>A whole hour for an axis label: "6 AM" or "06:00".</summary>
     public static string FormatHour(int hour, CultureInfo culture, bool use24Hour) =>
-        (DateTime.MinValue + TimeSpan.FromHours(hour % 24)).ToString(use24Hour ? "HH:mm" : "h tt", culture);
+        Format(TimeSpan.FromHours(hour % 24), culture, use24Hour, wholeHour: true);
+
+    /// <summary>
+    /// Lays the time out the way the culture's own short time pattern does (separator, and whether AM/PM comes first),
+    /// switched to the 12- or 24-hour clock the user chose. A culture with no AM/PM text of its own borrows English's.
+    /// </summary>
+    private static string Format(TimeSpan time, CultureInfo culture, bool use24Hour, bool wholeHour)
+    {
+        var pattern = culture.DateTimeFormat.ShortTimePattern;
+        var designatorFirst = pattern.IndexOf('t') is var t && t >= 0 && t < pattern.IndexOfAny(['h', 'H']);
+        var core = DesignatorPattern().Replace(pattern, string.Empty).Trim();
+        core = HourPattern().Replace(core, use24Hour ? "HH" : "h");
+        if (!core.Contains('m'))
+        {
+            core += ":mm";
+        }
+
+        if (wholeHour && !use24Hour)
+        {
+            core = MinutesPattern().Replace(core, string.Empty).Trim();
+        }
+
+        var format = use24Hour ? core : designatorFirst ? $"tt {core}" : $"{core} tt";
+        var designators = string.IsNullOrEmpty(culture.DateTimeFormat.AMDesignator) ? CultureInfo.GetCultureInfo("en-US") : culture;
+        return (DateTime.MinValue + time).ToString(format, designators);
+    }
+
+    [GeneratedRegex(@"\s*t+\s*")]
+    private static partial Regex DesignatorPattern();
+
+    [GeneratedRegex("[hH]+")]
+    private static partial Regex HourPattern();
+
+    [GeneratedRegex(@"[^\shHm]*m+[^\shHm]*")]
+    private static partial Regex MinutesPattern();
 
     public static string FormatDuration(TimeSpan duration)
     {

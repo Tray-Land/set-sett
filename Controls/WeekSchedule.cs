@@ -261,7 +261,7 @@ public sealed partial class WeekSchedule : Control
             IsHitTestVisible = false,
         };
 
-        for (var hour = 0; hour <= 48; hour++)
+        for (var hour = 0; hour <= 24; hour++)
         {
             var label = new TextBlock
             {
@@ -275,18 +275,6 @@ public sealed partial class WeekSchedule : Control
             Canvas.SetTop(label, TimeRangePicker.CalendarAxisY(hour * 60) - 9);
             axis.Children.Add(label);
         }
-
-        var nextDay = new TextBlock
-        {
-            Text = "Next day",
-            Width = AxisWidth - 10,
-            TextAlignment = TextAlignment.Right,
-            FontSize = 11,
-            Foreground = TimeRangePicker.ThemeBrush("TextFillColorTertiaryBrush"),
-        };
-        Canvas.SetLeft(nextDay, 0);
-        Canvas.SetTop(nextDay, TimeRangePicker.CalendarAxisY(24 * 60) + 10);
-        axis.Children.Add(nextDay);
 
         Grid.SetColumn(axis, 0);
         body.Children.Add(axis);

@@ -118,6 +118,19 @@ public sealed record TimeWindowCondition(TimeOnly From, TimeOnly To, WeekDays Da
         return this with { From = from, To = to, Days = WeekDays.Every, PerDay = [] };
     }
 
+    /// <summary>Quick starting points for the week view: a name, and the days and hours it sets in one go.</summary>
+    public static IReadOnlyList<(string Name, WeekDays Days, TimeOnly From, TimeOnly To)> Presets { get; } =
+    [
+        ("Weekday working hours", WeekDays.Weekdays, new TimeOnly(9, 0), new TimeOnly(17, 0)),
+        ("Evenings", WeekDays.Every, new TimeOnly(18, 0), new TimeOnly(22, 0)),
+        ("Overnight", WeekDays.Every, new TimeOnly(22, 0), new TimeOnly(6, 0)),
+        ("Weekends", WeekDays.Weekend, new TimeOnly(0, 0), new TimeOnly(0, 0)),
+    ];
+
+    /// <summary>The same hours on the chosen days and every other day off, with no per-day differences.</summary>
+    public TimeWindowCondition WithPreset(WeekDays days, TimeOnly from, TimeOnly to) =>
+        this with { From = from, To = to, Days = days, PerDay = [] };
+
     public override DateTime? NextChange(ConditionContext context)
     {
         // The pattern repeats weekly, so yesterday (an overnight window still open) through a week

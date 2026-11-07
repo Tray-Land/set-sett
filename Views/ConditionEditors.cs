@@ -20,12 +20,15 @@ internal static class ConditionEditors
     // The dial and the week snap to 5 minutes, as the time pickers before them did, so saved hours keep their minutes.
     private static readonly TimeSpan HoursStep = TimeSpan.FromMinutes(5);
 
+    // The week view is drawn at half a pixel a minute, so it snaps to quarter hours.
+    private static readonly TimeSpan WeekStep = TimeSpan.FromMinutes(15);
+
     public sealed record Kind(string Label, string Glyph, Func<Condition> Create);
 
     /// <summary>What can start an automatic setter. Places appear only once Windows allows location.</summary>
     public static IReadOnlyList<Kind> StartKinds() =>
     [
-        new("Time of day", Glyphs.Clock, () => new TimeWindowCondition(new TimeOnly(22, 0), new TimeOnly(7, 0), WeekDays.Every)),
+        new("Time of day", Glyphs.Clock, () => new TimeWindowCondition(new TimeOnly(9, 0), new TimeOnly(17, 0), WeekDays.Every)),
         new("Sunrise or sunset", Glyphs.Sun, () => new SunCondition(SunPhase.Night)),
         new("Wi-Fi or network", Glyphs.WiFi, () => new NetworkCondition(SetterHost.Snapshot.Networks?.FirstOrDefault() ?? "")),
         new("Device connected", Glyphs.Bluetooth, () => new DeviceCondition("")),
@@ -173,7 +176,14 @@ internal static class ConditionEditors
         var eachDay = new RadioButton { Content = "Set the hours for each day", GroupName = group, IsChecked = !c.IsSameEveryDay };
 
         void ShowDial() => body.Child = HoursDial(c, (from, to) => set(c = c with { From = from, To = to }));
-        void ShowWeek() => body.Child = HoursWeek(c, (day, on, from, to) => set(c = c.WithDay(day, on, from, to)));
+        void ShowWeek() => body.Child = HoursWeek(
+            c,
+            (day, on, from, to) => set(c = c.WithDay(day, on, from, to)),
+            (days, from, to) =>
+            {
+                set(c = c.WithPreset(days, from, to));
+                ShowWeek();
+            });
 
         // Going back to one dial folds the week into the hours most days have. Switching straight back
         // (without touching the dial) brings the week back as it was.
@@ -236,9 +246,20 @@ internal static class ConditionEditors
         return panel;
     }
 
-    private static FrameworkElement HoursWeek(TimeWindowCondition c, Action<DayOfWeek, bool, TimeOnly, TimeOnly> changed)
+    private static FrameworkElement HoursWeek(
+        TimeWindowCondition c, Action<DayOfWeek, bool, TimeOnly, TimeOnly> changed, Action<WeekDays, TimeOnly, TimeOnly> preset)
     {
-        var week = new WeekSchedule { Step = HoursStep, ViewportHeight = 420 };
+        var presets = new WrapRow();
+        presets.Children.Add(new TextBlock { Text = "Quick set:", VerticalAlignment = VerticalAlignment.Center });
+        foreach ((string name, WeekDays days, TimeOnly from, TimeOnly to) in TimeWindowCondition.Presets)
+        {
+            var button = new Button { Content = name };
+            ToolTipService.SetToolTip(button, $"{SetterText.Time(from)} to {SetterText.Time(to)}");
+            button.Click += (_, _) => preset(days, from, to);
+            presets.Children.Add(button);
+        }
+
+        var week = new WeekSchedule { Step = WeekStep, ViewportHeight = 480 };
         foreach (DaySchedule day in week.Days)
         {
             (TimeOnly from, TimeOnly to) = c.HoursOn(day.Day);
@@ -252,7 +273,8 @@ internal static class ConditionEditors
             changed(day.Day, day.IsOn, from, to);
         };
 
-        var panel = new StackPanel { Spacing = 4 };
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(presets);
         panel.Children.Add(week);
         panel.Children.Add(Caption("Drag a day's block or its ends to set its hours; a block can run past midnight. Turn a day's switch off to skip it."));
         return panel;
