@@ -62,6 +62,8 @@ that contain one raw setter remain importable.
 
 ## Install
 
+[<img src="docs/MSIX.svg" alt="Install SetSett (MSIX)" width="212">](https://github.com/Tray-Land/set-sett/releases/latest/download/SetSett.appinstaller)
+
 Coming to the Microsoft Store. Requires Windows 10 2004 or later or Windows 11, on x64 or ARM64.
 
 ## Privacy and footprint
