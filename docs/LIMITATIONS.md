@@ -46,6 +46,15 @@ Most conditions are event-driven: network, power, and device changes come from W
 
 The CPU check is whole-PC, not per app. A GPU-bound render can look idle to it, so for those, use "When an app closes" or a timer instead.
 
+## Device detection depends on what Windows reports
+
+Device conditions watch connected device containers, present plug-and-play devices, and active playback and recording endpoints, without polling. A paired Bluetooth device that isn't connected does not count as connected just because Windows remembers it.
+
+- **Analog speakers and headsets:** Windows can report plugging and unplugging only if the audio adapter and its driver support jack-presence detection. Otherwise an endpoint can appear connected even with nothing plugged into its jack. Built-in speakers and microphones normally remain connected.
+- **Docks:** some have their own Windows device name; others expose only components such as a USB hub, monitor, audio device, or network adapter. Pick one of those components, using **All devices** if needed. A component shared with other connections isn't a unique dock identifier.
+- **Names:** conditions match Windows device names, not a particular serial number or USB port. Identically named devices count as one choice, and renaming a device means updating its condition. This keeps existing conditions and exported setters compatible.
+- **Filters:** **Peripherals** hides internal hardware and low-level controllers, **Audio** shows playback and recording endpoints, and **All devices** includes internal and system devices. A saved selection stays visible even when disconnected or outside the current filter. Filters never alter a condition's matching behavior.
+
 ## Settings limits
 
 | Setting | Limit |

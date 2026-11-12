@@ -31,7 +31,7 @@ internal static class ConditionEditors
         new("Time of day", Glyphs.Clock, () => new TimeWindowCondition(new TimeOnly(9, 0), new TimeOnly(17, 0), WeekDays.Every)),
         new("Sunrise or sunset", Glyphs.Sun, () => new SunCondition(SunPhase.Night)),
         new("Wi-Fi or network", Glyphs.WiFi, () => new NetworkCondition(SetterHost.Snapshot.Networks?.FirstOrDefault() ?? "")),
-        new("Device connected", Glyphs.Bluetooth, () => new DeviceCondition("")),
+        new("Device connected", Glyphs.Monitor, () => new DeviceCondition("")),
         new("App running", Glyphs.Processing, () => new ProcessCondition("")),
         new("Power or battery", Glyphs.Lightning, () => new PowerCondition(PowerCheck.OnBattery, PowerCondition.DefaultPercent)),
         .. PlaceService.LocationAllowed
@@ -48,7 +48,7 @@ internal static class ConditionEditors
         new("When an app closes", Glyphs.Processing, () => new ProcessCondition("") { Not = true }),
         new("At sunrise or sunset", Glyphs.Sun, () => new SunCondition(SunPhase.Day)),
         new("When a network disconnects", Glyphs.WiFi, () => new NetworkCondition(SetterHost.Snapshot.Networks?.FirstOrDefault() ?? "") { Not = true }),
-        new("When a device disconnects", Glyphs.Bluetooth, () => new DeviceCondition("") { Not = true }),
+        new("When a device disconnects", Glyphs.Monitor, () => new DeviceCondition("") { Not = true }),
         new("Power or battery", Glyphs.Lightning, () => new PowerCondition(PowerCheck.BatteryBelow, PowerCondition.DefaultPercent)),
     ];
 
@@ -80,7 +80,7 @@ internal static class ConditionEditors
             TimeWindowCondition => ("Time of day", Glyphs.Clock),
             SunCondition => (stop ? "At sunrise or sunset" : "Sunrise or sunset", Glyphs.Sun),
             NetworkCondition => ("Network", Glyphs.WiFi),
-            DeviceCondition => ("Device", Glyphs.Bluetooth),
+            DeviceCondition => ("Device", Glyphs.Monitor),
             ProcessCondition => ("App", Glyphs.Processing),
             PowerCondition => ("Power", Glyphs.Lightning),
             PlaceCondition => ("Place", Glyphs.Location),
@@ -117,8 +117,7 @@ internal static class ConditionEditors
         SunCondition c => Sun(c, stop, set),
         NetworkCondition c => Named(c, c.Network, NetworkNames(), stop ? ["Disconnects from", "Connects to"] : ["Connected to", "Not connected to"], stop,
             (name, not) => c with { Network = name, Not = not }, set, "Network name"),
-        DeviceCondition c => Named(c, c.Device, SetterHost.Snapshot.Devices ?? [], stop ? ["Disconnects", "Connects"] : ["Connected", "Not connected"], stop,
-            (name, not) => c with { Device = name, Not = not }, set, "Device name"),
+        DeviceCondition c => Device(c, stop, set),
         ProcessCondition c => Named(c, c.Process, SetterHost.RunningApps(), stop ? ["Closes", "Starts"] : ["Is running", "Isn't running"], stop,
             (name, not) => c with { Process = name, Not = not }, set, "App name, like blender or code"),
         PowerCondition c => Power(c, set),
@@ -404,6 +403,72 @@ internal static class ConditionEditors
     }
 
     private static IReadOnlyCollection<string> NetworkNames() => SetterHost.Snapshot.Networks ?? NetworkSensor.ReadNames();
+
+    private static FrameworkElement Device(DeviceCondition c, bool stop, Action<Condition> set)
+    {
+        var panel = new StackPanel { Spacing = 8 };
+        DeviceFilter filter = DeviceFilter.Peripherals;
+        bool refreshing = false;
+        ComboBox picker = Picker([], c.Device, name =>
+        {
+            if (!refreshing)
+            {
+                set(c = c with { Device = name });
+            }
+        }, "Device name");
+        TextBlock status = Caption("");
+
+        void Refresh()
+        {
+            IReadOnlyList<ConnectedDevice>? devices = SetterHost.Snapshot.DeviceChoices;
+            List<string> names = devices is null ? [] : [.. DeviceNames.Choices(devices, filter)];
+            if (!string.IsNullOrEmpty(c.Device) && !names.Contains(c.Device, StringComparer.OrdinalIgnoreCase))
+            {
+                names.Insert(0, c.Device);
+            }
+
+            if (!picker.Items.Cast<string>().SequenceEqual(names))
+            {
+                string text = picker.Text;
+                refreshing = true;
+                picker.Items.Clear();
+                foreach (string name in names)
+                {
+                    picker.Items.Add(name);
+                }
+
+                picker.SelectedItem = names.Find(n => string.Equals(n, c.Device, StringComparison.OrdinalIgnoreCase));
+                picker.Text = text;
+                refreshing = false;
+            }
+
+            status.Text = devices is null
+                ? "Waiting for Windows to report devices. If this continues, check Diagnostics."
+                : DeviceNames.Choices(devices, filter).Count == 0
+                    ? "No connected devices in this group. Try All devices, or type a device name."
+                    : "Pick a connected device, or type its Windows name for use when it reconnects.";
+        }
+
+        string[] modes = stop ? ["Disconnects", "Connects"] : ["Connected", "Not connected"];
+        ComboBox mode = Combo(modes, stop ? (c.Not ? 0 : 1) : (c.Not ? 1 : 0), i =>
+            set(c = c with { Not = stop ? i == 0 : i == 1 }), "Condition", 160);
+        ComboBox group = Combo(["Peripherals", "Audio", "All devices"], (int)filter, i =>
+        {
+            filter = (DeviceFilter)i;
+            Refresh();
+        }, "Show devices", 160);
+        picker.DropDownOpened += (_, _) => Refresh();
+        panel.Loaded += (_, _) =>
+        {
+            SetterHost.Changed += Refresh;
+            Refresh();
+        };
+        panel.Unloaded += (_, _) => SetterHost.Changed -= Refresh;
+        panel.Children.Add(Horizontal(mode, group, picker));
+        panel.Children.Add(Caption("USB, Bluetooth, monitors, docks, speakers, and headsets. Peripherals hides internal hardware and system devices; All devices includes them."));
+        panel.Children.Add(status);
+        return panel;
+    }
 
     private static FrameworkElement Power(PowerCondition c, Action<Condition> set)
     {
