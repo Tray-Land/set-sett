@@ -165,31 +165,64 @@ internal static class ConditionEditors
     /// <summary>
     /// Time of day: one 24-hour dial when every day has the same hours, or the week view to give each
     /// day its own hours or turn it off. Both save once an edit finishes (a drag released, a key, a
-    /// typed time), not on every step of a drag.
+    /// typed time), not on every step of a drag. With Range off the same dial and week show a single
+    /// time instead of a span (<see cref="TimeWindowCondition.AtTime"/>): the setter starts as the clock
+    /// reaches it. The span's end is kept meanwhile, so turning Range back on restores it.
     /// </summary>
     private static FrameworkElement TimeWindow(TimeWindowCondition c, Action<Condition> set)
     {
         var panel = new StackPanel { Spacing = 12 };
         var body = new Border();
         string group = Guid.NewGuid().ToString("N");
-        var sameEveryDay = new RadioButton { Content = "Same hours every day", GroupName = group, IsChecked = c.IsSameEveryDay };
-        var eachDay = new RadioButton { Content = "Set the hours for each day", GroupName = group, IsChecked = !c.IsSameEveryDay };
+        var sameEveryDay = new RadioButton { GroupName = group };
+        var eachDay = new RadioButton { GroupName = group };
+        var range = new CheckBox { Content = "Range", MinWidth = 0, IsChecked = !c.AtTime };
+        AutomationProperties.SetName(range, "Range: between two times, or off for a single time");
+        bool syncing = false;
 
-        void ShowDial() => body.Child = HoursDial(c, (from, to) => set(c = c with { From = from, To = to }));
+        void Labels()
+        {
+            sameEveryDay.Content = c.AtTime ? "Same time every day" : "Same hours every day";
+            eachDay.Content = c.AtTime ? "Set the time for each day" : "Set the hours for each day";
+        }
+
+        void ShowDial() => body.Child = HoursDial(c, (from, to) => set(c = c.AtTime ? c with { From = from } : c with { From = from, To = to }));
         void ShowWeek() => body.Child = HoursWeek(
             c,
-            (day, on, from, to) => set(c = c.WithDay(day, on, from, to)),
+            (day, on, from, to) => set(c = c.AtTime ? c.WithMoment(day, on, from) : c.WithDay(day, on, from, to)),
             (days, from, to) =>
             {
                 set(c = c.WithPreset(days, from, to));
                 ShowWeek();
             });
 
+        void Show()
+        {
+            syncing = true;
+            Labels();
+            sameEveryDay.IsChecked = c.IsSameEveryDay;
+            eachDay.IsChecked = !c.IsSameEveryDay;
+            syncing = false;
+            if (c.IsSameEveryDay)
+            {
+                ShowDial();
+            }
+            else
+            {
+                ShowWeek();
+            }
+        }
+
         // Going back to one dial folds the week into the hours most days have. Switching straight back
         // (without touching the dial) brings the week back as it was.
         TimeWindowCondition? week = null;
         sameEveryDay.Checked += (_, _) =>
         {
+            if (syncing)
+            {
+                return;
+            }
+
             if (!c.IsSameEveryDay)
             {
                 week = c;
@@ -200,6 +233,11 @@ internal static class ConditionEditors
         };
         eachDay.Checked += (_, _) =>
         {
+            if (syncing)
+            {
+                return;
+            }
+
             if (week is { } saved && saved.SameEveryDay() == c)
             {
                 set(c = saved);
@@ -207,19 +245,16 @@ internal static class ConditionEditors
 
             ShowWeek();
         };
+        range.Click += (_, _) =>
+        {
+            set(c = c with { AtTime = range.IsChecked != true });
+            week = null;
+            Show();
+        };
 
-        panel.Children.Add(Horizontal(sameEveryDay, eachDay));
+        panel.Children.Add(Horizontal(sameEveryDay, eachDay, range));
         panel.Children.Add(body);
-
-        if (c.IsSameEveryDay)
-        {
-            ShowDial();
-        }
-        else
-        {
-            ShowWeek();
-        }
-
+        Show();
         return panel;
     }
 
@@ -231,9 +266,9 @@ internal static class ConditionEditors
             Step = HoursStep,
             Width = 320,
             HorizontalAlignment = HorizontalAlignment.Left,
-            Value = TimeRangeValue.Between(c.From, c.To),
+            Value = c.AtTime ? new TimeRangeValue(c.From.ToTimeSpan()) : TimeRangeValue.Between(c.From, c.To),
         };
-        AutomationProperties.SetName(dial, "Hours");
+        AutomationProperties.SetName(dial, c.AtTime ? "Time" : "Hours");
         dial.ValueCommitted += (_, e) =>
         {
             (TimeOnly from, TimeOnly to) = e.NewValue.ToWindow();
@@ -242,7 +277,9 @@ internal static class ConditionEditors
 
         var panel = new StackPanel { Spacing = 4 };
         panel.Children.Add(dial);
-        panel.Children.Add(Caption("Drag either end round the dial, drag the arc to move both, or type the times. Midnight is at the top."));
+        panel.Children.Add(Caption(c.AtTime
+            ? "Drag the handle round the dial, or type the time. Midnight is at the top."
+            : "Drag either end round the dial, drag the arc to move both, or type the times. Midnight is at the top."));
         return panel;
     }
 
@@ -254,7 +291,7 @@ internal static class ConditionEditors
         foreach ((string name, WeekDays days, TimeOnly from, TimeOnly to) in TimeWindowCondition.Presets)
         {
             var button = new Button { Content = name };
-            ToolTipService.SetToolTip(button, $"{SetterText.Time(from)} to {SetterText.Time(to)}");
+            ToolTipService.SetToolTip(button, c.AtTime ? SetterText.Time(from) : $"{SetterText.Time(from)} to {SetterText.Time(to)}");
             button.Click += (_, _) => preset(days, from, to);
             presets.Children.Add(button);
         }
@@ -263,7 +300,7 @@ internal static class ConditionEditors
         foreach (DaySchedule day in week.Days)
         {
             (TimeOnly from, TimeOnly to) = c.HoursOn(day.Day);
-            day.Value = TimeRangeValue.Between(from, to);
+            day.Value = c.AtTime ? new TimeRangeValue(from.ToTimeSpan()) : TimeRangeValue.Between(from, to);
             day.IsOn = c.IsOn(day.Day);
         }
 
@@ -276,7 +313,9 @@ internal static class ConditionEditors
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(presets);
         panel.Children.Add(week);
-        panel.Children.Add(Caption("Drag a day's block or its ends to set its hours; a block can run past midnight. Turn a day's switch off to skip it."));
+        panel.Children.Add(Caption(c.AtTime
+            ? "Drag a day's line to set its time. Turn a day's switch off to skip it."
+            : "Drag a day's block or its ends to set its hours; a block can run past midnight. Turn a day's switch off to skip it."));
         return panel;
     }
 

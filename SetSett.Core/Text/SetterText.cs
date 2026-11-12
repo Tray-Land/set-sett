@@ -69,6 +69,11 @@ public static class SetterText
     /// </summary>
     public static string Hours(TimeWindowCondition t)
     {
+        if (t.AtTime)
+        {
+            return Moments(t);
+        }
+
         List<((TimeOnly From, TimeOnly To) Hours, WeekDays Days)> groups = [.. Week()
             .Where(t.IsOn)
             .GroupBy(t.HoursOn)
@@ -81,6 +86,21 @@ public static class SetterText
         }
 
         return string.Join(", ", groups.Select(g => $"{Time(g.Hours.From)}–{Time(g.Hours.To)} {Days(g.Days)}"));
+    }
+
+    /// <summary>"at 9:00 AM every day", or with times that differ "at 9:00 AM on weekdays, 10:00 AM on Sat".</summary>
+    private static string Moments(TimeWindowCondition t)
+    {
+        List<(TimeOnly At, WeekDays Days)> groups = [.. Week()
+            .Where(t.IsOn)
+            .GroupBy(t.MomentOn)
+            .Select(g => (g.Key, g.Aggregate(WeekDays.None, (days, day) => days | TimeWindowCondition.DayFlag(day))))];
+
+        return groups.Count switch
+        {
+            0 => $"at {Time(t.From)} {Days(WeekDays.None)}",
+            _ => "at " + string.Join(", ", groups.Select(g => $"{Time(g.At)} {Days(g.Days)}")),
+        };
     }
 
     /// <summary>A start condition as a phrase: "after sunset", "connected to Home Wi-Fi".</summary>
@@ -109,6 +129,8 @@ public static class SetterText
         {
             case SunCondition s:
                 return s.Phase == SunPhase.Night ? Offset(s.SunriseOffsetMinutes, "sunrise") : Offset(s.SunsetOffsetMinutes, "sunset");
+            case TimeWindowCondition { AtTime: true }:
+                return null;
             case TimeWindowCondition t:
                 var ends = Week().Where(t.IsOn).Select(d => t.HoursOn(d).To).Distinct().ToList();
                 return ends.Count == 1 ? Time(ends[0]) : "the end of its hours";
@@ -171,10 +193,19 @@ public static class SetterText
     public static string ImportSummary(Setter setter, ISettingCatalog catalog)
     {
         string starts = setter.IsAutomatic ? When(setter) : "when you click it";
-        List<string> stops = setter.IsAutomatic
-            ? ["when its start conditions end"]
-            : ["when you click it again"];
+        List<string> stops = setter.HasTrigger
+            ? []
+            : setter.IsAutomatic
+                ? ["when its start conditions end"]
+                : ["when you click it again"];
         stops.AddRange(setter.Until.Select(Until));
+
+        if (setter.AppliesOnce)
+        {
+            return $"Changes: {Changes(setter, catalog)}.\n" +
+                   $"Starts: {starts}.\n" +
+                   "Afterwards: sets them once and leaves the new values in place.";
+        }
 
         return $"Changes: {Changes(setter, catalog)}.\n" +
                $"Starts: {starts}.\n" +

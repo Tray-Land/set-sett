@@ -36,6 +36,13 @@ public abstract record Condition
     /// </summary>
     public virtual bool CanStart => true;
 
+    /// <summary>
+    /// True for a start condition that is an instant ("at 9:00 AM"), not a stretch that holds. It fires
+    /// when the clock crosses it; <see cref="Test"/> never answers for it. A setter with one starts on the
+    /// crossing and doesn't stop when it passes, and its other start conditions only have to hold then.
+    /// </summary>
+    public virtual bool IsTrigger => false;
+
     /// <summary>The answer after <see cref="Not"/>; null when it isn't known yet.</summary>
     public bool? Evaluate(ConditionContext context) => Test(context) is { } result ? result != Not : null;
 
@@ -69,9 +76,22 @@ public sealed record DayHours(DayOfWeek Day, TimeOnly From, TimeOnly To);
 /// Between From and To on the chosen days, or with different hours on some days (<see cref="PerDay"/>).
 /// A window that ends at or before it starts runs overnight (22:00–06:00) and belongs to the day it
 /// starts on; From == To is a full 24 hours.
+/// With <see cref="AtTime"/> it is an instant instead: the moment the clock reaches From (or a day's own
+/// time) on a chosen day. To is then unused, but kept so switching back restores the window.
 /// </summary>
 public sealed record TimeWindowCondition(TimeOnly From, TimeOnly To, WeekDays Days) : Condition
 {
+    /// <summary>
+    /// Crossing a time instead of being inside a span: the setter starts as the clock reaches the time.
+    /// A setter's <c>Until</c> ends it; with none, it just applies its values at that time and is done.
+    /// </summary>
+    public bool AtTime { get; set; }
+
+    /// <summary>How long after a time passes it still fires (the PC was asleep or busy); later than this it's missed.</summary>
+    public static readonly TimeSpan MomentGrace = TimeSpan.FromMinutes(10);
+
+    public override bool IsTrigger => AtTime;
+
     /// <summary>
     /// The days whose hours differ from From–To, at most one entry per day. Empty means every chosen
     /// day uses From–To. An entry for a day that's off is kept, so turning the day back on brings its
@@ -82,7 +102,44 @@ public sealed record TimeWindowCondition(TimeOnly From, TimeOnly To, WeekDays Da
     public override Sensors Sensors => Sensors.Clock;
 
     /// <summary>Every day is on with the same hours, so one dial says it all (the editor shows the week otherwise).</summary>
-    public bool IsSameEveryDay => Days == WeekDays.Every && PerDay.All(d => d.From == From && d.To == To);
+    public bool IsSameEveryDay => Days == WeekDays.Every && PerDay.All(d => d.From == From && (AtTime || d.To == To));
+
+    /// <summary>The time a chosen day fires at, in <see cref="AtTime"/> mode.</summary>
+    public TimeOnly MomentOn(DayOfWeek day) => HoursOn(day).From;
+
+    /// <summary>Turns a day on or off and gives it a time (<see cref="AtTime"/> mode), leaving its window's end alone.</summary>
+    public TimeWindowCondition WithMoment(DayOfWeek day, bool on, TimeOnly at) => WithDay(day, on, at, HoursOn(day).To);
+
+    /// <summary>
+    /// The latest time that fired after <paramref name="sinceUtc"/> and up to now, if it was within
+    /// <see cref="MomentGrace"/>; null when none did. Only <see cref="AtTime"/> mode fires.
+    /// </summary>
+    public DateTime? FiredSince(DateTime sinceUtc, SensorSnapshot now)
+    {
+        if (!AtTime)
+        {
+            return null;
+        }
+
+        // The grace is far under a day, so yesterday and today hold every time that can still count.
+        DateTime today = now.LocalTime.Date;
+        DateTime? latest = null;
+        foreach (DateTime day in (DateTime[])[today.AddDays(-1), today])
+        {
+            if (!IsOn(day.DayOfWeek))
+            {
+                continue;
+            }
+
+            DateTime at = now.ToUtc(day + MomentOn(day.DayOfWeek).ToTimeSpan());
+            if (at > sinceUtc && at <= now.UtcNow && now.UtcNow - at <= MomentGrace && (latest is null || at > latest))
+            {
+                latest = at;
+            }
+        }
+
+        return latest;
+    }
 
     public static WeekDays DayFlag(DayOfWeek day) => (WeekDays)(1 << (int)day);
 
@@ -146,7 +203,8 @@ public sealed record TimeWindowCondition(TimeOnly From, TimeOnly To, WeekDays Da
             }
 
             (DateTime start, DateTime end) = Window(day);
-            foreach (DateTime boundary in (DateTime[])[start, end])
+            DateTime[] boundaries = AtTime ? [day + MomentOn(day.DayOfWeek).ToTimeSpan()] : [start, end];
+            foreach (DateTime boundary in boundaries)
             {
                 if (boundary > local && (next is null || boundary < next))
                 {
@@ -160,6 +218,12 @@ public sealed record TimeWindowCondition(TimeOnly From, TimeOnly To, WeekDays Da
 
     protected override bool? Test(ConditionContext context)
     {
+        // An instant isn't held; it fires (FiredSince), so it never answers as a level.
+        if (AtTime)
+        {
+            return null;
+        }
+
         DateTime local = context.Now.LocalTime;
         return Covers(local.Date, local) || Covers(local.Date.AddDays(-1), local);
     }
@@ -168,9 +232,9 @@ public sealed record TimeWindowCondition(TimeOnly From, TimeOnly To, WeekDays Da
     // file round trip still counts as the same condition (Setter.RunsDifferentlyThan relies on it).
     public bool Equals(TimeWindowCondition? other) =>
         other is not null && base.Equals(other) && From == other.From && To == other.To && Days == other.Days &&
-        PerDay.SequenceEqual(other.PerDay);
+        AtTime == other.AtTime && PerDay.SequenceEqual(other.PerDay);
 
-    public override int GetHashCode() => HashCode.Combine(base.GetHashCode(), From, To, Days, PerDay.Count);
+    public override int GetHashCode() => HashCode.Combine(base.GetHashCode(), From, To, Days, PerDay.Count, AtTime);
 
     private bool Covers(DateTime day, DateTime local)
     {

@@ -350,12 +350,8 @@ public sealed partial class WeekSchedule : Control
             };
             AutomationProperties.SetName(Picker, fullName);
 
-            // A point cannot be edited here (there is no Range switch), so every day holds a range.
-            if (!day.Value.IsRange)
-            {
-                day.Value = TimeRangeMath.ToRange(day.Value, TimeRangeConstraints.Default);
-            }
-
+            // A day holds a range or a point (the week is either all spans or all single times; the owner
+            // of the week decides, there is no Range switch on a column). A point is drawn as a line and dragged by it.
             Picker.Value = day.Value;
             ShowState();
         }

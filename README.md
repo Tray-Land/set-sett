@@ -24,7 +24,8 @@ You build **setters**. A setter is:
 
 | Starts automatically when | Stops when |
 |---|---|
-| A time of day: the same hours every day (on a 24-hour dial), or each day's own hours, with any days off (on a week view) | After a while (a timer) |
+| A time of day, as a span: the same hours every day (on a 24-hour dial), or each day's own hours, with any days off (on a week view) | After a while (a timer) |
+| A time of day, as an instant ("At a time"): the same time on the days you pick, or a time for each day. It starts the setter as the clock reaches it; with no way to stop, it just applies its values then | |
 | Between sunset and sunrise (or the reverse), with offsets | At a time of day |
 | Connected (or not) to a Wi-Fi or wired network | The CPU has been quiet for a while ("keep awake until the render finishes") |
 | A device is connected (headphones, a dock, a mouse) | An app closes |

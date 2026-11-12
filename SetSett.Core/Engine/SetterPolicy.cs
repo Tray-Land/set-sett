@@ -28,9 +28,14 @@ public enum StopReason
 
 /// <param name="Renew">
 /// With <paramref name="Start"/>: the setter is already running, but its conditions ended and began again
-/// without Set Sett seeing it (the PC slept through the gap), so its run starts afresh.
+/// without Set Sett seeing it (the PC slept through the gap), or its time came round again, so its run starts afresh.
 /// </param>
-public readonly record struct SetterTransition(string SetterId, bool Start, StopReason Reason = StopReason.Until, bool Renew = false);
+/// <param name="Once">
+/// With <paramref name="Start"/>: the setter has no stop condition, so it sets its values and is done:
+/// no run begins and nothing is held to put back.
+/// </param>
+public readonly record struct SetterTransition(
+    string SetterId, bool Start, StopReason Reason = StopReason.Until, bool Renew = false, bool Once = false);
 
 /// <summary>
 /// Decides which setters start and stop given what the sensors see. Pure, so it's unit tested; the
@@ -72,8 +77,22 @@ public static class SetterPolicy
         return sawUnknown ? null : match == ConditionMatch.All;
     }
 
-    public static bool? StartConditionsHold(Setter setter, SensorSnapshot now) =>
-        Combine(setter.When.Where(c => c.CanStart).Select(c => c.Evaluate(new ConditionContext(now))), setter.Match);
+    /// <summary>
+    /// Whether the start conditions that hold over time are true. An instant ("at 9:00 AM") isn't one of
+    /// them; a setter with one asks its other conditions only at the moment it fires, and with no others
+    /// there is nothing to hold, so this is true.
+    /// </summary>
+    public static bool? StartConditionsHold(Setter setter, SensorSnapshot now)
+    {
+        List<Condition> levels = [.. setter.When.Where(c => c.CanStart && !c.IsTrigger)];
+        return levels.Count == 0 && setter.HasTrigger
+            ? true
+            : Combine(levels.Select(c => c.Evaluate(new ConditionContext(now))), setter.Match);
+    }
+
+    /// <summary>Whether any of the setter's instants fired after <paramref name="sinceUtc"/> and up to now.</summary>
+    public static bool TriggerFired(Setter setter, DateTime sinceUtc, SensorSnapshot now) =>
+        setter.When.OfType<TimeWindowCondition>().Any(t => t.AtTime && t.FiredSince(sinceUtc, now) is not null);
 
     public static bool StopConditionMet(Setter setter, SetterRun run, SensorSnapshot now) =>
         setter.Until.Any(c => c.Evaluate(run.Context(now)) == true);
@@ -86,7 +105,7 @@ public static class SetterPolicy
     /// </summary>
     public static bool ConditionsEndedSince(Setter setter, DateTime sinceUtc, SensorSnapshot now)
     {
-        List<Condition> clock = [.. setter.When.Where(c => c.CanStart && c.Sensors.HasFlag(Sensors.Clock))];
+        List<Condition> clock = [.. setter.When.Where(c => c.CanStart && !c.IsTrigger && c.Sensors.HasFlag(Sensors.Clock))];
         DateTime at = sinceUtc;
         for (int i = 0; clock.Count > 0 && i < MaxReplayedBoundaries; i++)
         {
@@ -100,7 +119,7 @@ public static class SetterPolicy
             at = boundary;
             context = new ConditionContext(now with { UtcNow = at });
             bool? held = Combine(
-                setter.When.Where(c => c.CanStart).Select(c => c.Sensors.HasFlag(Sensors.Clock) ? c.Evaluate(context) : null),
+                setter.When.Where(c => c.CanStart && !c.IsTrigger).Select(c => c.Sensors.HasFlag(Sensors.Clock) ? c.Evaluate(context) : null),
                 setter.Match);
             if (held == false)
             {
@@ -116,9 +135,12 @@ public static class SetterPolicy
     /// conditions become true; one stopped early (latched) waits for them to end first. An end the PC
     /// slept through still counts: a run from an earlier window starts afresh, and a latch clears. An
     /// unknown answer changes nothing, so a sensor that hasn't reported yet never flips a setter.
+    /// A setter with an instant ("at 9:00 AM") starts when the clock crosses it, if its other conditions
+    /// hold then, and the instant passing doesn't stop it. <paramref name="triggersSince"/> says, per setter,
+    /// when its instants were last checked; a setter missing from it fires nothing this step.
     /// </summary>
     public static (IReadOnlyList<SetterTransition> Transitions, RunState State) Step(
-        IReadOnlyList<Setter> setters, RunState state, SensorSnapshot now)
+        IReadOnlyList<Setter> setters, RunState state, SensorSnapshot now, IReadOnlyDictionary<string, DateTime>? triggersSince = null)
     {
         List<SetterTransition> transitions = [];
         var byId = setters.ToDictionary(s => s.Id);
@@ -142,6 +164,9 @@ public static class SetterPolicy
         foreach (Setter setter in setters)
         {
             bool? holds = setter.IsAutomatic ? StartConditionsHold(setter, now) : null;
+            bool trigger = setter.HasTrigger;
+            bool fired = trigger && triggersSince is not null && triggersSince.TryGetValue(setter.Id, out DateTime since0) &&
+                TriggerFired(setter, since0, now);
             SetterRun? run = state.RunOf(setter.Id);
             if (run is not null)
             {
@@ -153,11 +178,16 @@ public static class SetterPolicy
                 {
                     transitions.Add(new(setter.Id, false, StopReason.Disabled));
                 }
-                else if (holds == false)
+                else if (!trigger && holds == false)
                 {
                     transitions.Add(new(setter.Id, false, StopReason.ConditionsEnded));
                 }
-                else if (holds == true && ConditionsEndedSince(setter, run.ActiveSinceUtc, now))
+                else if (trigger && fired && holds == true)
+                {
+                    // Its time came round again while it's still on: a fresh run, so its timer starts over.
+                    transitions.Add(new(setter.Id, true, Renew: true));
+                }
+                else if (!trigger && holds == true && ConditionsEndedSince(setter, run.ActiveSinceUtc, now))
                 {
                     // Before the stop conditions: a timer left over from the earlier window must not end this one.
                     transitions.Add(new(setter.Id, true, Renew: true));
@@ -165,7 +195,9 @@ public static class SetterPolicy
                 else if (StopConditionMet(setter, run, now))
                 {
                     transitions.Add(new(setter.Id, false, StopReason.Until));
-                    if (setter.IsAutomatic)
+
+                    // An instant has no conditions to wait out: the next one starts it again.
+                    if (setter.IsAutomatic && !trigger)
                     {
                         state = state.WithLatch(setter.Id, now.UtcNow);
                     }
@@ -182,6 +214,18 @@ public static class SetterPolicy
             if (!setter.Enabled || !setter.CanRun)
             {
                 state = state.WithoutLatch(setter.Id);
+                continue;
+            }
+
+            if (trigger)
+            {
+                // A pause ends when the conditions next begin, and for an instant that is its next firing.
+                if (fired && holds == true)
+                {
+                    state = state.WithoutLatch(setter.Id);
+                    transitions.Add(new(setter.Id, true, Once: setter.AppliesOnce));
+                }
+
                 continue;
             }
 

@@ -484,6 +484,8 @@ internal sealed partial class SetterEditor : UserControl
         // The wording only says "these" when there's a list to point at.
         _stop.Children.Add(Caption((_setter.IsAutomatic, _setter.Until.Count > 0) switch
         {
+            (true, true) when _setter.HasTrigger => "It starts at its time and stops when any of these happens.",
+            (true, false) when _setter.HasTrigger => "With no way to stop, it just sets its values at its time and leaves them. Add a way to stop it to hold them for a while and then put them back.",
             (true, true) => "It stops when its start conditions end, or sooner if any of these happens. After stopping sooner, it waits for its conditions to start again.",
             (true, false) => "It stops when its start conditions end. Add a way to stop it sooner.",
             (false, true) => "It stops when you click it again, or on its own if any of these happens.",

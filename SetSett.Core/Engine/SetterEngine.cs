@@ -75,7 +75,7 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
     /// <summary>Evaluates every setter and starts or stops the ones whose moment has come.</summary>
     public async Task<IReadOnlyList<SetterTransition>> StepAsync(IReadOnlyList<Setter> setters, SensorSnapshot now)
     {
-        var (transitions, state) = SetterPolicy.Step(setters, State, now);
+        var (transitions, state) = SetterPolicy.Step(setters, State, now, TriggerWindows(setters, now));
         if (!ReferenceEquals(state, State))
         {
             State = state;
@@ -93,6 +93,10 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
             {
                 await RenewAsync(setters.First(s => s.Id == transition.SetterId), now);
             }
+            else if (transition.Once)
+            {
+                await ApplyOnceAsync(setters.First(s => s.Id == transition.SetterId));
+            }
             else if (transition.Start)
             {
                 await StartAsync(setters.First(s => s.Id == transition.SetterId), now);
@@ -104,6 +108,40 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
         }
 
         return transitions;
+    }
+
+    /// <summary>
+    /// When each setter's instants ("at 9:00 AM") were last checked, so a Step only fires the ones that
+    /// passed since. In memory: after a restart nothing earlier fires. A setter new to this, or whose
+    /// start conditions were just edited, counts from now, so adding "at 9:00 AM" at 9:03 doesn't fire it.
+    /// </summary>
+    private Dictionary<string, (DateTime CheckedUtc, IReadOnlyList<Condition> When)> _checked = [];
+
+    private Dictionary<string, DateTime> TriggerWindows(IReadOnlyList<Setter> setters, SensorSnapshot now)
+    {
+        Dictionary<string, DateTime> since = [];
+        Dictionary<string, (DateTime, IReadOnlyList<Condition>)> next = [];
+        foreach (Setter setter in setters.Where(s => s.HasTrigger))
+        {
+            bool unchanged = _checked.TryGetValue(setter.Id, out var seen) && seen.When.SequenceEqual(setter.When);
+            since[setter.Id] = unchanged ? seen.CheckedUtc : now.UtcNow;
+            next[setter.Id] = (now.UtcNow, setter.When);
+        }
+
+        _checked = next;
+        return since;
+    }
+
+    /// <summary>A setter with no stop condition, fired by a time: sets its values, with no run and nothing to put back.</summary>
+    private async Task ApplyOnceAsync(Setter setter)
+    {
+        if (!setter.CanRun || !setter.Enabled)
+        {
+            return;
+        }
+
+        Log.Info("Engine", $"Applying {setter.Name} [{setter.Id}] once: {setter.Changes.Count} change(s)");
+        await ApplyChangesAsync(setter, _ => true, claim: false);
     }
 
     /// <summary>Starts a setter: snapshots each setting, saves the claim, then sets the value.</summary>
@@ -222,8 +260,9 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
     private static string Name(IReadOnlyList<Setter> setters, string id) =>
         setters.FirstOrDefault(s => s.Id == id) is { } s ? $"{s.Name} [{id}]" : id;
 
-    private async Task ApplyChangesAsync(Setter setter, Func<SettingChange, bool> include, bool skipIfAlreadySet = false)
+    private async Task ApplyChangesAsync(Setter setter, Func<SettingChange, bool> include, bool skipIfAlreadySet = false, bool claim = true)
     {
+        bool hold = claim && setter.PutBack;
         // Unavailable family members wait until the loop ends: a PC without a battery has no
         // "on battery" member by design, which is fine when its sibling was applied.
         List<(string SettingId, string Family)> unavailableMembers = [];
@@ -259,8 +298,8 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
                 appliedFamilies.Add(available);
             }
 
-            SettingValue? current = setter.PutBack || skipIfAlreadySet ? await setting.ReadAsync() : null;
-            if (setter.PutBack)
+            SettingValue? current = hold || skipIfAlreadySet ? await setting.ReadAsync() : null;
+            if (hold)
             {
                 State = ClaimLedger.Apply(State, change.SettingId, setter.Id, current, change.Value);
                 store.Save(State); // The snapshot is on disk before Windows changes.
@@ -280,8 +319,11 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
             {
                 Log.Warn("Engine", $"Windows refused {change.SettingId} for {setter.Name}");
                 _problems.Add(new SettingProblem(setter.Id, change.SettingId, DateTime.UtcNow));
-                State = ClaimLedger.Discard(State, change.SettingId, setter.Id);
-                store.Save(State);
+                if (hold)
+                {
+                    State = ClaimLedger.Discard(State, change.SettingId, setter.Id);
+                    store.Save(State);
+                }
             }
         }
 

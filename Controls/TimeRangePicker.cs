@@ -41,7 +41,7 @@ public sealed class TimeRangeChangedEventArgs(TimeRangeValue oldValue, TimeRange
 /// </summary>
 /// <remarks>
 /// Ported from the Controls-Experiment lab without its compact view, mode switcher and point/range toggle, which Set
-/// Sett doesn't use. A null <see cref="End"/> (a single point) still draws, but nothing here makes one.
+/// Sett doesn't use. A null <see cref="End"/> is a single point in time: it draws as a handle on the dial and a line on the calendar, and drags like a start edge. The caller makes one (the editor's Range switch); the picker has no point/range toggle of its own.
 /// </remarks>
 public sealed partial class TimeRangePicker : Control
 {

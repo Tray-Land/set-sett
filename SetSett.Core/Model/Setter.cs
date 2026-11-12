@@ -165,6 +165,15 @@ public sealed record Setter
 
     public bool IsAutomatic => Start == StartMode.Automatic;
 
+    /// <summary>
+    /// An automatic setter started by an instant ("at 9:00 AM"). Its other start conditions only have to
+    /// hold at that moment, and it keeps running after the moment passes, until a stop condition.
+    /// </summary>
+    public bool HasTrigger => IsAutomatic && When.Any(c => c.CanStart && c.IsTrigger);
+
+    /// <summary>A trigger setter with no stop condition: at the moment it sets its values and is done, with nothing to put back.</summary>
+    public bool AppliesOnce => HasTrigger && Until.Count == 0;
+
     /// <summary>A click-to-start setter that stops after a while, so its tray icon can offer other lengths.</summary>
     public bool HasTimer => !IsAutomatic && Until.Any(c => c is ElapsedCondition);
 
