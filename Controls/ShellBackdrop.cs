@@ -36,6 +36,13 @@ public sealed partial class ShellBackdrop : SystemBackdrop
         _controller = null;
     }
 
+    // This backdrop owns its configuration. XAML can notify us after disconnect with a null target,
+    // which the base implementation rejects; do not forward its default configuration changes.
+    protected override void OnDefaultSystemBackdropConfigurationChanged(
+        ICompositionSupportsSystemBackdrop target, XamlRoot xamlRoot)
+    {
+    }
+
     /// <summary>Sets the light/dark look and the accent tint (null for the neutral look).</summary>
     public void Update(bool isLight, Color? accentTint)
     {
