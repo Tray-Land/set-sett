@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Set Sett** · Last updated: 1 November 2026
+**Set Sett** · Last updated: 11 November 2026
 
 Set Sett does not collect, transmit, or share any of your information, private or personal. Everything it knows stays on your PC.
 
@@ -32,7 +32,7 @@ Set Sett declares a few Windows capabilities. Each is used only on your device, 
 
 ## Reading your PC's state
 
-To start or stop a setter, Set Sett may check things like which apps are running, CPU activity, power or battery status, the connected Wi-Fi or wired network, and the time of day. It does this only for the conditions in setters you have turned on. The readings are used in memory to make a decision and are not recorded or sent anywhere.
+To start or stop a setter, Set Sett may check things like which apps are running, CPU activity, power or battery status, the connected Wi-Fi or wired network, connected devices (including USB peripherals and audio endpoints), and the time of day. It does this only for the conditions in setters you have turned on, or while the editor is open to populate its pickers. It reads device connection state, never audio. The readings are used in memory to make a decision and are not recorded or sent anywhere.
 
 ## Changes to this policy
 

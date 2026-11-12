@@ -41,8 +41,11 @@ public sealed record SensorSnapshot(DateTime UtcNow)
     /// <summary>Connected network names: Wi-Fi SSIDs and the names Windows gives wired networks.</summary>
     public IReadOnlyCollection<string>? Networks { get; init; }
 
-    /// <summary>Names of connected devices, as Settings > Bluetooth &amp; devices shows them.</summary>
+    /// <summary>Names of connected device containers, present plug-and-play devices, and active audio endpoints.</summary>
     public IReadOnlyCollection<string>? Devices { get; init; }
+
+    /// <summary>Connected devices grouped for the editor; filtering never changes <see cref="Devices"/>.</summary>
+    public IReadOnlyList<ConnectedDevice>? DeviceChoices { get; init; }
 
     public PowerState? Power { get; init; }
 

@@ -377,8 +377,8 @@ public sealed record NetworkCondition(string Network) : Condition
 }
 
 /// <summary>
-/// A device (headphones, a dock, a mouse) is connected, matched by the name Windows shows in
-/// Settings > Bluetooth &amp; devices. Names survive moving a USB device to another port; ids don't.
+/// A device (headphones, speakers, a dock, a mouse) is connected, matched by its Windows device or
+/// audio endpoint name. Names survive moving a USB device to another port; ids don't.
 /// </summary>
 public sealed record DeviceCondition(string Device) : Condition
 {

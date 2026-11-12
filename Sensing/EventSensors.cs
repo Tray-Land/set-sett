@@ -2,6 +2,7 @@ using Microsoft.Windows.System.Power;
 using SetSett.Diagnostics;
 using SetSett.Model;
 using Windows.Devices.Enumeration;
+using Windows.Media.Devices;
 using Windows.Networking.Connectivity;
 
 namespace SetSett.Sensing;
@@ -76,122 +77,217 @@ internal sealed class NetworkSensor : IDisposable
 }
 
 /// <summary>
-/// External devices (Bluetooth, USB, monitors, docks) and whether each is connected: a DeviceWatcher
-/// over device containers, the same list as Settings > Bluetooth &amp; devices.
+/// Connected containers, present plug-and-play devices, and active playback / recording endpoints.
+/// Audio selectors track jack state too, when the driver supports jack-presence detection.
 /// </summary>
 internal sealed class DeviceSensor : IDisposable
 {
     private const string ExternalDevices = "System.Devices.LocalMachine:=System.StructuredQueryType.Boolean#False";
     private const string ConnectedProperty = "System.Devices.Connected";
+    private const string PresentDevices = "System.Devices.Present:=System.StructuredQueryType.Boolean#True";
+    private const string LocalProperty = "System.Devices.InLocalMachineContainer";
+    private const string ClassProperty = "System.Devices.ClassGuid";
+    private const string ContainerProperty = "System.Devices.ContainerId";
 
-    private readonly DeviceWatcher _watcher;
-    private readonly Dictionary<string, (string Name, bool Connected)> _containers = [];
+    private readonly Dictionary<DeviceWatcher, Dictionary<string, DeviceInformation>> _sources = [];
+    private readonly HashSet<DeviceWatcher> _enumerated = [];
     private readonly Lock _lock = new();
-    private bool _enumerated;
+    private readonly DeviceWatcher _containers;
+    private readonly DeviceWatcher _plugAndPlay;
+    private bool _failed;
+    private bool _disposed;
 
     public DeviceSensor()
     {
-        // A List, not an array: CsWinRT marshals it as IIterable<string> in trimmed builds too.
-        _watcher = DeviceInformation.CreateWatcher(ExternalDevices, new List<string> { ConnectedProperty }, DeviceInformationKind.DeviceContainer);
-        _watcher.Added += OnAdded;
-        _watcher.Updated += OnUpdated;
-        _watcher.Removed += OnRemoved;
-        _watcher.EnumerationCompleted += OnEnumerationCompleted;
-        _watcher.Start();
+        try
+        {
+            // Lists cross into WinRT, including in trimmed builds.
+            _containers = Add(DeviceInformation.CreateWatcher(ExternalDevices,
+                new List<string> { ConnectedProperty }, DeviceInformationKind.DeviceContainer));
+            _plugAndPlay = Add(DeviceInformation.CreateWatcher(PresentDevices,
+                new List<string> { LocalProperty, ClassProperty, ContainerProperty }, DeviceInformationKind.Device));
+            Add(DeviceInformation.CreateWatcher(MediaDevice.GetAudioRenderSelector()));
+            Add(DeviceInformation.CreateWatcher(MediaDevice.GetAudioCaptureSelector()));
+            foreach (DeviceWatcher watcher in _sources.Keys)
+            {
+                watcher.Start();
+            }
+        }
+        catch
+        {
+            Dispose();
+            throw;
+        }
     }
 
     public event Action? Changed;
 
-    /// <summary>Names of the connected devices; null until the first enumeration completes.</summary>
-    public IReadOnlyList<string>? Devices { get; private set; }
+    /// <summary>Null until every source finishes enumerating, or if a watcher fails.</summary>
+    public IReadOnlyList<ConnectedDevice>? Devices { get; private set; }
 
     public void Dispose()
     {
-        _watcher.Added -= OnAdded;
-        _watcher.Updated -= OnUpdated;
-        _watcher.Removed -= OnRemoved;
-        _watcher.EnumerationCompleted -= OnEnumerationCompleted;
-        if (_watcher.Status is DeviceWatcherStatus.Started or DeviceWatcherStatus.EnumerationCompleted)
+        lock (_lock)
         {
-            _watcher.Stop();
+            _disposed = true;
+        }
+
+        foreach (DeviceWatcher watcher in _sources.Keys)
+        {
+            watcher.Added -= OnAdded;
+            watcher.Updated -= OnUpdated;
+            watcher.Removed -= OnRemoved;
+            watcher.EnumerationCompleted -= OnEnumerationCompleted;
+            watcher.Stopped -= OnStopped;
+            if (watcher.Status is DeviceWatcherStatus.Started or DeviceWatcherStatus.EnumerationCompleted)
+            {
+                watcher.Stop();
+            }
         }
     }
 
-    private static bool IsConnected(IReadOnlyDictionary<string, object> properties) =>
-        properties.TryGetValue(ConnectedProperty, out object? value) && value is true;
-
-    // Windows also lists a few software endpoints as containers ("Windows.Devices.Sms.SmsDevice").
-    private static bool IsUserFacing(string name) =>
-        !string.IsNullOrWhiteSpace(name) && !name.StartsWith("Windows.", StringComparison.Ordinal);
+    private DeviceWatcher Add(DeviceWatcher watcher)
+    {
+        _sources.Add(watcher, []);
+        watcher.Added += OnAdded;
+        watcher.Updated += OnUpdated;
+        watcher.Removed += OnRemoved;
+        watcher.EnumerationCompleted += OnEnumerationCompleted;
+        watcher.Stopped += OnStopped;
+        return watcher;
+    }
 
     private void OnAdded(DeviceWatcher sender, DeviceInformation info)
     {
+        bool changed;
         lock (_lock)
         {
-            _containers[info.Id] = (info.Name, IsConnected(info.Properties));
-        }
-
-        Publish();
-    }
-
-    private void OnUpdated(DeviceWatcher sender, DeviceInformationUpdate update)
-    {
-        lock (_lock)
-        {
-            if (!_containers.TryGetValue(update.Id, out var container) || !update.Properties.ContainsKey(ConnectedProperty))
+            if (_disposed)
             {
                 return;
             }
 
-            _containers[update.Id] = container with { Connected = IsConnected(update.Properties) };
+            _sources[sender][info.Id] = info;
+            changed = Publish();
         }
 
-        Publish();
+        if (changed) Changed?.Invoke();
+    }
+
+    private void OnUpdated(DeviceWatcher sender, DeviceInformationUpdate update)
+    {
+        bool changed;
+        lock (_lock)
+        {
+            if (_disposed || !_sources[sender].TryGetValue(update.Id, out DeviceInformation? info))
+            {
+                return;
+            }
+
+            info.Update(update);
+            changed = Publish();
+        }
+
+        if (changed) Changed?.Invoke();
     }
 
     private void OnRemoved(DeviceWatcher sender, DeviceInformationUpdate update)
     {
+        bool changed;
         lock (_lock)
         {
-            _containers.Remove(update.Id);
+            if (_disposed)
+            {
+                return;
+            }
+
+            _sources[sender].Remove(update.Id);
+            changed = Publish();
         }
 
-        Publish();
+        if (changed) Changed?.Invoke();
     }
 
     private void OnEnumerationCompleted(DeviceWatcher sender, object args)
     {
-        _enumerated = true;
-        Publish();
-    }
-
-    // The watcher reports each container on its own during enumeration; wait for the full list.
-    private void Publish()
-    {
-        if (!_enumerated)
-        {
-            return;
-        }
-
-        List<string> devices;
+        bool changed;
         lock (_lock)
         {
-            devices = _containers.Values
-                .Where(c => c.Connected && IsUserFacing(c.Name))
-                .Select(c => c.Name)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Order(StringComparer.CurrentCultureIgnoreCase)
-                .ToList();
+            if (_disposed)
+            {
+                return;
+            }
+
+            _enumerated.Add(sender);
+            changed = Publish();
         }
 
+        if (changed) Changed?.Invoke();
+    }
+
+    private void OnStopped(DeviceWatcher sender, object args)
+    {
+        lock (_lock)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _failed = true;
+            Devices = null;
+        }
+
+        Log.Error("Sensors", $"Device watcher stopped unexpectedly ({sender.Status}); device conditions are unknown");
+        Changed?.Invoke();
+    }
+
+    // Called with the lock held. Never publish a partial initial list as a disconnection.
+    private bool Publish()
+    {
+        if (_failed || _enumerated.Count != _sources.Count)
+        {
+            return false;
+        }
+
+        Dictionary<Guid, bool> connections = _sources[_containers].Values
+            .Where(info => Guid.TryParse(info.Id, out _))
+            .ToDictionary(info => Guid.Parse(info.Id), info =>
+                info.Properties.TryGetValue(ConnectedProperty, out object? connected) && connected is true);
+        IReadOnlyList<ConnectedDevice> devices = DeviceNames.Merge(_sources.SelectMany(source => source.Value.Values
+            .Where(info => source.Key == _containers
+                ? info.Properties.TryGetValue(ConnectedProperty, out object? connected) && connected is true
+                : source.Key != _plugAndPlay || DeviceNames.IsPlugAndPlayDevice(DeviceClass(info), info.Id,
+                    info.Properties.TryGetValue(ContainerProperty, out object? id) && id is Guid container &&
+                    connections.TryGetValue(container, out bool containerConnected) ? containerConnected : null))
+            .Select(info => Describe(source.Key, info, connections))));
         if (Devices is { } current && current.SequenceEqual(devices))
         {
-            return;
+            return false;
         }
 
         Devices = devices;
-        Changed?.Invoke();
+        return true;
     }
+
+    private ConnectedDevice Describe(DeviceWatcher source, DeviceInformation info, IReadOnlyDictionary<Guid, bool> connections)
+    {
+        bool audio = source != _containers && source != _plugAndPlay;
+        bool peripheral = source == _containers;
+        if (source == _plugAndPlay)
+        {
+            bool external = info.Properties.TryGetValue(LocalProperty, out object? local) && local is false;
+            bool hasContainer = info.Properties.TryGetValue(ContainerProperty, out object? id) && id is Guid container &&
+                connections.TryGetValue(container, out bool connected) && connected;
+            peripheral = DeviceNames.IsPeripheral(external, DeviceClass(info), hasContainer);
+        }
+
+        return new ConnectedDevice(info.Name,
+            peripheral && !info.Name.StartsWith("Windows.", StringComparison.Ordinal), audio);
+    }
+
+    private static Guid DeviceClass(DeviceInformation info) =>
+        info.Properties.TryGetValue(ClassProperty, out object? value) && value is Guid guid ? guid : Guid.Empty;
 }
 
 /// <summary>Battery charge and whether the PC is plugged in, from the Windows App SDK power events.</summary>

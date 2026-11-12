@@ -356,7 +356,8 @@ internal static class SetterHost
     private static SensorSnapshot BuildSnapshot() => new(DateTime.UtcNow)
     {
         Networks = _network?.Networks,
-        Devices = _devices?.Devices,
+        Devices = _devices?.Devices?.Select(d => d.Name).ToList(),
+        DeviceChoices = _devices?.Devices,
         Power = _power?.Power,
         Processes = _processes?.Running,
         Cpu = _cpu?.Samples,
