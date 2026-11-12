@@ -82,7 +82,8 @@ public sealed partial class TrayFlyoutWindow : WindowEx
 
         SystemBackdrop = _backdrop;
         ApplyShellTheme();
-        _uiSettings.ColorValuesChanged += OnColorValuesChanged;
+        _uiSettings.ColorValuesChanged += OnShellThemeChanged;
+        SystemThemeService.Changed += OnShellThemeChanged;
 
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         ConfigureWindowChrome();
@@ -183,7 +184,8 @@ public sealed partial class TrayFlyoutWindow : WindowEx
         _page.OnHidden();
         _page.Dispose();
 
-        _uiSettings.ColorValuesChanged -= OnColorValuesChanged;
+        _uiSettings.ColorValuesChanged -= OnShellThemeChanged;
+        SystemThemeService.Changed -= OnShellThemeChanged;
         Activated -= OnWindowActivated;
         AppWindow.Closing -= OnAppWindowClosing;
 
@@ -209,8 +211,15 @@ public sealed partial class TrayFlyoutWindow : WindowEx
         }
     }
 
-    // Raised off the UI thread when the accent color or light/dark mode changes.
-    private void OnColorValuesChanged(UISettings sender, object args) => DispatcherQueue.TryEnqueue(ApplyShellTheme);
+    // ColorValuesChanged can arrive before the registry watcher updates the cached taskbar theme.
+    // Listen to both, and ignore callbacks already queued when the window closes.
+    private void OnShellThemeChanged(object? sender, object args) => DispatcherQueue.TryEnqueue(() =>
+    {
+        if (!_isClosed)
+        {
+            ApplyShellTheme();
+        }
+    });
 
     /// <summary>Matches the taskbar's mode and accent tint, like the shell's own flyouts.</summary>
     private void ApplyShellTheme()
