@@ -3,7 +3,7 @@
   <!-- Store app: Identity Name/Publisher stay as generated until "Associate App with the Store"
        replaces them with the Partner Center reservation (as in Trdo). PhoneProductId keeps the
        generated GUID. -->
-  <Identity Name="40087JoeFinApps.10582035B19E7" Publisher="CN=153F3B0F-BA3D-4964-8098-71AC78A1DF6A" Version="1.1.0.0" />
+  <Identity Name="40087JoeFinApps.10582035B19E7" Publisher="CN=153F3B0F-BA3D-4964-8098-71AC78A1DF6A" Version="1.2.0.0" />
   <mp:PhoneIdentity PhoneProductId="96ec0b2f-f5fb-4b5d-afbb-f858754a079b" PhonePublisherId="00000000-0000-0000-0000-000000000000" />
   <Properties>
     <DisplayName>Set Sett</DisplayName>
