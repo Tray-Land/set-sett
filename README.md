@@ -9,7 +9,7 @@ Set Windows settings with one click, or let them set themselves. Set Sett is a s
 You build **setters**. A setter is:
 
 - **What it changes**: one or more settings and the values to give them.
-- **When it starts**: when you click it, or automatically when something happens.
+- **When it starts**: when you click it, automatically when something happens, or **Toggle settings on each click** to switch each setting to its other value.
 - **When it stops**: when you click it again, when its conditions end, or after any stop condition you add.
 - **Afterwards**: whether to put each setting back to what it was before it started.
 - **Where it shows**: a button in the flyout and, optionally, its own tray icon, which can show the time left in a timed run as a donut or a horizontal or vertical bar. You choose how the icon looks when the setter is on and when it's off: a different icon, a color, dimmed or not, and the small "on" bar.
@@ -21,6 +21,8 @@ You build **setters**. A setter is:
 | Sound | Volume, Mute, Microphone mute (default devices) |
 | Connections | Wi-Fi, Bluetooth |
 | Power | Screen off after and Sleep after (always, only when plugged in, or only on battery), Keep awake |
+
+**One-click switches.** In a setter's editor, choose **Toggle settings on each click** under **When it starts**. Each click in the flyout, in the main tray menu, or on its own tray icon reads the current Windows value and switches to the other one, even if you changed it outside Set Sett. This works with **Theme** (Light / Dark, for Windows, apps, or both), **Transparency effects**, **Mute**, **Microphone mute**, **Wi-Fi**, and **Bluetooth**. Each selected setting switches independently, including the Windows and app themes when you choose Both. There is no running state, timer, or put-back: the new values stay in place, including on Quit. Its button and icon are actions, not live indicators of Windows settings. Volume and timeouts need specific values; Keep awake uses the normal start/stop mode instead. Existing setters keep their start/stop behavior unless you choose the new mode.
 
 | Starts automatically when | Stops when |
 |---|---|

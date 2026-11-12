@@ -132,8 +132,8 @@ internal static class SetterHost
     }
 
     /// <summary>
-    /// The flyout button or a setter's tray icon: starts or stops a manual setter; pauses a running
-    /// automatic one, or resumes a paused one.
+    /// The flyout button or a setter's tray icon: switches a click-to-toggle setter, starts or stops
+    /// a manual setter, or pauses or resumes an automatic one.
     /// </summary>
     public static async Task ToggleAsync(string setterId)
     {
@@ -146,7 +146,11 @@ internal static class SetterHost
         await Gate.WaitAsync();
         try
         {
-            if (!setter.IsAutomatic)
+            if (setter.IsToggle)
+            {
+                await _engine.StartAsync(setter, BuildSnapshot());
+            }
+            else if (!setter.IsAutomatic)
             {
                 if (Run.IsActive(setterId))
                 {
@@ -184,7 +188,7 @@ internal static class SetterHost
     /// </summary>
     public static async Task StartForAsync(string setterId, TimeSpan length)
     {
-        if (_engine is null || Find(setterId) is not { IsAutomatic: false } setter || _stopping)
+        if (_engine is null || Find(setterId) is not { Start: StartMode.Manual } setter || _stopping)
         {
             return;
         }

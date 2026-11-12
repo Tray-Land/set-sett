@@ -14,8 +14,9 @@ namespace SetSett.Views;
 
 /// <summary>
 /// The flyout: one button per setter. A manual setter is a toggle (accent while on, like a Quick
-/// Settings tile); an automatic one shows what it's waiting for, with a pause button while it's on and
-/// a resume button while it's paused. Disabled setters aren't listed. Listens to <see cref="SetterHost.Changed"/> only while visible.
+/// Settings tile); a click-to-toggle setter is an action button. An automatic one shows what it's
+/// waiting for, with a pause button while it's on and a resume button while it's paused. Disabled
+/// setters aren't listed. Listens to <see cref="SetterHost.Changed"/> only while visible.
 /// </summary>
 public sealed partial class FlyoutPage : Page, IDisposable
 {
@@ -107,7 +108,7 @@ public sealed partial class FlyoutPage : Page, IDisposable
             key.Append('\n')
                 .Append(setter.Id).Append('|').Append(Label(setter)).Append('|').Append(setter.Glyph).Append('|')
                 .Append(SetterText.Status(setter, run, now)).Append('|').Append(run.IsActive(setter.Id)).Append('|')
-                .Append(setter.CanRun).Append('|').Append(setter.IsAutomatic).Append('|').Append(ring);
+                .Append(setter.CanRun).Append('|').Append(setter.Start).Append('|').Append(ring);
         }
 
         return key.ToString();
@@ -144,16 +145,13 @@ public sealed partial class FlyoutPage : Page, IDisposable
     {
         bool on = run.IsActive(setter.Id);
         string status = SetterText.Status(setter, run, now);
-        var button = new ToggleButton
-        {
-            IsChecked = on,
-            IsEnabled = setter.CanRun,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            Padding = new Thickness(12, 10, 12, 10),
-            CornerRadius = new CornerRadius(8),
-            Content = CardContent(setter, status, on, CountdownRing(setter, run, now)),
-        };
+        ButtonBase button = setter.IsToggle ? new Button() : new ToggleButton { IsChecked = on };
+        button.IsEnabled = setter.CanRun;
+        button.HorizontalAlignment = HorizontalAlignment.Stretch;
+        button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        button.Padding = new Thickness(12, 10, 12, 10);
+        button.CornerRadius = new CornerRadius(8);
+        button.Content = CardContent(setter, status, on, CountdownRing(setter, run, now));
         AutomationProperties.SetName(button, $"{Label(setter)}, {status}");
         ToolTipService.SetToolTip(button, SetterText.Changes(setter, SetterHost.Catalog));
         button.Click += (_, _) => _ = SetterHost.ToggleAsync(setter.Id);

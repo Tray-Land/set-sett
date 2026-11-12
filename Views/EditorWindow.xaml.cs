@@ -389,7 +389,7 @@ public sealed partial class EditorWindow : WindowEx
     private static void Fill(ListViewItem item, Setter setter)
     {
         string name = string.IsNullOrWhiteSpace(setter.Name) ? "Untitled setter" : setter.Name;
-        string summary = setter.IsAutomatic ? "Automatic: " + SetterText.When(setter) : "On click";
+        string summary = setter.IsAutomatic ? "Automatic: " + SetterText.When(setter) : setter.IsToggle ? "Toggle on each click" : "On click";
 
         // A disabled setter has no flyout button or tray icon, so this list is where it shows as off.
         double opacity = setter.Enabled ? 1 : 0.55;

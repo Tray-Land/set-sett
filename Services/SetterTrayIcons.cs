@@ -238,7 +238,7 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
 
             var toggle = new MenuFlyoutItem
             {
-                Text = on ? "Stop" : "Start",
+                Text = setter.IsToggle ? "Toggle settings" : on ? "Stop" : "Start",
                 Icon = new FontIcon { Glyph = on ? "" : "" },
                 IsEnabled = setter.CanRun,
             };

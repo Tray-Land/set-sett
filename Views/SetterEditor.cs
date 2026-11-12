@@ -43,6 +43,7 @@ internal sealed partial class SetterEditor : UserControl
     private readonly StackPanel _changes = new() { Spacing = 4 };
     private readonly StackPanel _start = new() { Spacing = 4 };
     private readonly StackPanel _stop = new() { Spacing = 4 };
+    private readonly StackPanel _afterwards = new() { Spacing = 4 };
     private readonly DispatcherQueueTimer _sliderTimer;
     private readonly string _radioGroup = Guid.NewGuid().ToString("N");
     private Action? _pendingSlider;
@@ -81,7 +82,7 @@ internal sealed partial class SetterEditor : UserControl
         root.Children.Add(SectionTitle("When it stops"));
         root.Children.Add(_stop);
         root.Children.Add(SectionTitle("Afterwards"));
-        root.Children.Add(PutBackCard());
+        root.Children.Add(_afterwards);
         root.Children.Add(SectionTitle("Where it shows"));
         root.Children.Add(ShowCards());
         root.Children.Add(FooterActions());
@@ -215,6 +216,7 @@ internal sealed partial class SetterEditor : UserControl
         {
             Commit(_setter with { Changes = [.. _setter.Changes.Where((_, i) => !line.Indexes.Contains(i))] });
             BuildChanges();
+            BuildStart();
         }
 
         if (SetterHost.Catalog.Find(change.SettingId) is not { } setting)
@@ -224,8 +226,10 @@ internal sealed partial class SetterEditor : UserControl
 
         SettingInfo info = setting.Info;
         string description = line.Members.Any(SettingRegistry.IsAvailable) ? info.Description ?? "" : "Not available on this PC right now.";
-        FrameworkElement value = ValueEditor(info, change.Value, next =>
-            () => Commit(_setter with { Changes = SettingFamilies.Revalue(_setter.Changes, line, next) }));
+        FrameworkElement value = _setter.IsToggle
+            ? Caption(SetterText.ToggleValues(info))
+            : ValueEditor(info, change.Value, next =>
+                () => Commit(_setter with { Changes = SettingFamilies.Revalue(_setter.Changes, line, next) }));
 
         if (line.Family is null)
         {
@@ -355,16 +359,18 @@ internal sealed partial class SetterEditor : UserControl
                     bool free = info.Family is null
                         ? !used.Contains(info.Id)
                         : SettingFamilies.HasFreeMember(_setter.Changes, catalog, info.Family);
+                    bool toggleable = !_setter.IsToggle || info.CanToggle;
                     var item = new MenuFlyoutItem
                     {
-                        Text = available ? info.Name : $"{info.Name} (not on this PC)",
+                        Text = !available ? $"{info.Name} (not on this PC)" : !toggleable ? $"{info.Name} (can't toggle)" : info.Name,
                         Icon = new FontIcon { Glyph = info.Glyph },
-                        IsEnabled = available && free,
+                        IsEnabled = available && free && toggleable,
                     };
                     item.Click += (_, _) =>
                     {
                         Commit(_setter with { Changes = SettingFamilies.Add(_setter.Changes, catalog, setting) });
                         BuildChanges();
+                        BuildStart();
                     };
                     sub.Items.Add(item);
                 }
@@ -400,7 +406,7 @@ internal sealed partial class SetterEditor : UserControl
         {
             Content = "When I click it in the flyout or on its tray icon",
             GroupName = _radioGroup,
-            IsChecked = !_setter.IsAutomatic,
+            IsChecked = _setter.Start == StartMode.Manual,
             Padding = modePadding,
         };
         var automatic = new RadioButton
@@ -410,12 +416,26 @@ internal sealed partial class SetterEditor : UserControl
             IsChecked = _setter.IsAutomatic,
             Padding = modePadding,
         };
+        bool canToggle = _setter.Changes.All(c => SetterHost.Catalog.Find(c.SettingId)?.Info.CanToggle == true);
+        var toggle = new RadioButton
+        {
+            Content = "Toggle settings on each click",
+            GroupName = _radioGroup,
+            IsChecked = _setter.IsToggle,
+            IsEnabled = canToggle,
+            Padding = modePadding,
+        };
         manual.Checked += (_, _) => SetStart(StartMode.Manual);
         automatic.Checked += (_, _) => SetStart(StartMode.Automatic);
+        toggle.Checked += (_, _) => SetStart(StartMode.Toggle);
         var modes = new StackPanel();
         modes.Children.Add(manual);
         modes.Children.Add(automatic);
+        modes.Children.Add(toggle);
         _start.Children.Add(Card(modes));
+        _start.Children.Add(Caption(canToggle
+            ? "Toggle reads each setting's current value and switches to the other one. The new values stay until you change them again."
+            : "Toggle needs only two-state Windows settings, such as theme, transparency, mute, Wi-Fi or Bluetooth. Remove other settings to use it."));
 
         if (!_setter.IsAutomatic)
         {
@@ -471,16 +491,29 @@ internal sealed partial class SetterEditor : UserControl
             return;
         }
 
+        FlushSlider();
         Commit(_setter with { Start = mode });
+        BuildChanges();
         BuildStart();
         BuildStop();
+        BuildLooks();
     }
 
     // --- When it stops ----------------------------------------------------------------------------
 
     private void BuildStop()
     {
+        _afterwards.Children.Clear();
+        _afterwards.Children.Add(_setter.IsToggle
+            ? Caption("The switched values stay in place, including when you quit Set Sett. There is nothing to put back.")
+            : PutBackCard());
         _stop.Children.Clear();
+        if (_setter.IsToggle)
+        {
+            _stop.Children.Add(Caption("Each click switches the settings once. It doesn't stay running, so there is no timer or stop condition."));
+            return;
+        }
+
         // The wording only says "these" when there's a list to point at.
         _stop.Children.Add(Caption((_setter.IsAutomatic, _setter.Until.Count > 0) switch
         {
@@ -585,7 +618,7 @@ internal sealed partial class SetterEditor : UserControl
             note.IsOpen = trayIcon.IsOn && !SettingsService.HideTaskbarNote;
         };
         panel.Children.Add(Row("", "Its own tray icon",
-            Caption("Click the icon to start or stop it."),
+            Caption("Click the icon to use this setter."),
             trayIcon, remove: null, below: TrayIconDetails(note)));
         return panel;
     }
@@ -596,10 +629,7 @@ internal sealed partial class SetterEditor : UserControl
         StackPanel panel = _trayIconDetails;
         panel.Children.Add(note);
 
-        _looks.Children.Add(new TextBlock { Text = "How the icon looks" });
-        _looks.Children.Add(LookRow("When it's on", () => _setter.ActiveLook, look => _setter with { ActiveLook = look }));
-        _looks.Children.Add(LookRow("When it's off", () => _setter.InactiveLook, look => _setter with { InactiveLook = look }));
-        _looks.Children.Add(Caption("Each state can have its own icon and color, be dimmed, and show a small bar under it. By default it's full with a bar while it's on and faded while it's off. A multicolor emoji or a picture keeps its own colors, so the color only changes the bar."));
+        BuildLooks();
         panel.Children.Add(_looks);
 
         var style = Combo(["None", "Donut", "Horizontal bar", "Vertical bar"], Math.Max(0, Array.IndexOf(Indicators, _setter.Indicator)),
@@ -639,6 +669,21 @@ internal sealed partial class SetterEditor : UserControl
         panel.Children.Add(_timerChoices);
         panel.Children.Add(_timerHint);
         return panel;
+    }
+
+    private void BuildLooks()
+    {
+        _looks.Children.Clear();
+        _looks.Children.Add(new TextBlock { Text = "How the icon looks" });
+        if (!_setter.IsToggle)
+        {
+            _looks.Children.Add(LookRow("When it's on", () => _setter.ActiveLook, look => _setter with { ActiveLook = look }));
+        }
+
+        _looks.Children.Add(LookRow(_setter.IsToggle ? "Button" : "When it's off", () => _setter.InactiveLook, look => _setter with { InactiveLook = look }));
+        _looks.Children.Add(Caption(_setter.IsToggle
+            ? "The icon is a button, not a live indicator of the Windows setting's value."
+            : "Each state can have its own icon and color, be dimmed, and show a small bar under it. By default it's full with a bar while it's on and faded while it's off. A multicolor emoji or a picture keeps its own colors, so the color only changes the bar."));
     }
 
     private static readonly IconColor[] IconColors =
@@ -691,7 +736,8 @@ internal sealed partial class SetterEditor : UserControl
     {
         // Everything below the switch needs the tray icon, the taskbar note included (it closes with the switch).
         _trayIconDetails.Visibility = _setter.ShowTrayIcon ? Visibility.Visible : Visibility.Collapsed;
-        bool clickIcon = _setter.ShowTrayIcon && !_setter.IsAutomatic;
+        _indicator.Visibility = _setter.IsToggle ? Visibility.Collapsed : Visibility.Visible;
+        bool clickIcon = _setter.ShowTrayIcon && _setter.Start == StartMode.Manual;
         _timerChoices.Visibility = clickIcon && _setter.HasTimer ? Visibility.Visible : Visibility.Collapsed;
         _timerHint.Visibility = clickIcon && !_setter.HasTimer ? Visibility.Visible : Visibility.Collapsed;
     }

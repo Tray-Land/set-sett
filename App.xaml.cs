@@ -373,6 +373,17 @@ public partial class App : Application
             menu.Items.Add(new MenuFlyoutSeparator());
             foreach (Setter setter in manual)
             {
+                if (setter.IsToggle)
+                {
+                    var action = new MenuFlyoutItem
+                    {
+                        Text = $"Toggle {(string.IsNullOrWhiteSpace(setter.Name) ? "Untitled setter" : setter.Name)}",
+                    };
+                    action.Click += (_, _) => _ = SetterHost.ToggleAsync(setter.Id);
+                    menu.Items.Add(action);
+                    continue;
+                }
+
                 var toggle = new ToggleMenuFlyoutItem
                 {
                     Text = string.IsNullOrWhiteSpace(setter.Name) ? "Untitled setter" : setter.Name,
