@@ -78,4 +78,26 @@ public sealed record SettingInfo(string Id, string Name, string Group, string Gl
         (ValueKind.Choice, ChoiceValue choice) => Choices.Any(c => string.Equals(c.Id, choice.Id, StringComparison.OrdinalIgnoreCase)),
         _ => false,
     };
+
+    /// <summary>Two-state settings Windows keeps without a running setter (not process-held settings such as keep awake).</summary>
+    public bool CanToggle => Holder == ValueHolder.Windows &&
+        (Kind == ValueKind.OnOff || (Kind == ValueKind.Choice && Choices.Count == 2 &&
+            !string.Equals(Choices[0].Id, Choices[1].Id, StringComparison.OrdinalIgnoreCase)));
+
+    /// <summary>The other value, or null when the current value cannot be read or this setting cannot be toggled.</summary>
+    public SettingValue? OtherValue(SettingValue? current)
+    {
+        if (!CanToggle || current is null || !Accepts(current))
+        {
+            return null;
+        }
+
+        return current switch
+        {
+            OnOffValue onOff => new OnOffValue(!onOff.On),
+            ChoiceValue choice => new ChoiceValue(Choices[
+                string.Equals(Choices[0].Id, choice.Id, StringComparison.OrdinalIgnoreCase) ? 1 : 0].Id),
+            _ => null,
+        };
+    }
 }

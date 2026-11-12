@@ -101,6 +101,11 @@ public static class SetterImport
             {
                 return $"The value for \"{setting.Info.DisplayName}\" is not valid.";
             }
+
+            if (setter.IsToggle && !setting.Info.CanToggle)
+            {
+                return $"The setting \"{setting.Info.DisplayName}\" cannot be toggled on each click.";
+            }
         }
 
         if (setter.When.Any(condition => condition is null) || setter.Until.Any(condition => condition is null))

@@ -170,7 +170,7 @@ public static class SetterPolicy
             SetterRun? run = state.RunOf(setter.Id);
             if (run is not null)
             {
-                if (!setter.CanRun)
+                if (!setter.CanRun || setter.IsToggle)
                 {
                     transitions.Add(new(setter.Id, false, StopReason.Edited));
                 }

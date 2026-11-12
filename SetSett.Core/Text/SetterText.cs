@@ -19,6 +19,12 @@ public static class SetterText
         _ => "?",
     };
 
+    public static string ToggleValues(SettingInfo info) => !info.CanToggle
+        ? "Can't toggle"
+        : info.Kind == ValueKind.OnOff
+            ? $"{info.OnText} / {info.OffText}"
+            : string.Join(" / ", info.Choices.Select(c => c.Name));
+
     /// <summary>"Never", "45 sec", "5 min", "1 hr", "1 hr 30 min".</summary>
     public static string Duration(int seconds)
     {
@@ -186,12 +192,22 @@ public static class SetterText
             }
 
             // A family set everywhere reads as the setting alone: "Screen off after Never".
-            return $"{(line.Indexes.Count > 1 ? s.Info.Name : s.Info.DisplayName)} {Value(s.Info, c.Value)}";
+            string name = line.Indexes.Count > 1 ? s.Info.Name : s.Info.DisplayName;
+            return setter.IsToggle
+                ? $"{name}: toggle {ToggleValues(s.Info)}"
+                : $"{name} {Value(s.Info, c.Value)}";
         }));
 
     /// <summary>Plain-language import summary shown before a .sett file is added.</summary>
     public static string ImportSummary(Setter setter, ISettingCatalog catalog)
     {
+        if (setter.IsToggle)
+        {
+            return $"Changes: {Changes(setter, catalog)}.\n" +
+                   "Starts: on each click.\n" +
+                   "Afterwards: switches each setting from its current value and leaves it there.";
+        }
+
         string starts = setter.IsAutomatic ? When(setter) : "when you click it";
         List<string> stops = setter.HasTrigger
             ? []
@@ -231,6 +247,11 @@ public static class SetterText
         if (!setter.Enabled)
         {
             return "Disabled";
+        }
+
+        if (setter.IsToggle)
+        {
+            return "Click to switch";
         }
 
         if (setter.IsAutomatic)

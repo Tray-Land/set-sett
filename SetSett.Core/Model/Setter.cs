@@ -6,7 +6,10 @@ public enum StartMode
     Manual,
 
     /// <summary>Starts when its <see cref="Setter.When"/> conditions become true and stops when they end.</summary>
-    Automatic
+    Automatic,
+
+    /// <summary>Each click switches the settings from their current values to their opposites, with no run or put-back.</summary>
+    Toggle
 }
 
 public enum ConditionMatch
@@ -83,7 +86,7 @@ public sealed record IconLook
     };
 }
 
-/// <summary>One thing a setter does: give a setting a value.</summary>
+/// <summary>One setting to change. Toggle mode uses its current value's opposite instead of <see cref="Value"/>.</summary>
 public sealed record SettingChange(string SettingId, SettingValue Value);
 
 /// <summary>
@@ -165,17 +168,19 @@ public sealed record Setter
 
     public bool IsAutomatic => Start == StartMode.Automatic;
 
+    public bool IsToggle => Start == StartMode.Toggle;
+
     /// <summary>
     /// An automatic setter started by an instant ("at 9:00 AM"). Its other start conditions only have to
     /// hold at that moment, and it keeps running after the moment passes, until a stop condition.
     /// </summary>
     public bool HasTrigger => IsAutomatic && When.Any(c => c.CanStart && c.IsTrigger);
 
-    /// <summary>A trigger setter with no stop condition: at the moment it sets its values and is done, with nothing to put back.</summary>
-    public bool AppliesOnce => HasTrigger && Until.Count == 0;
+    /// <summary>A click-to-toggle setter or a trigger setter with no stop condition: changes values without a run or put-back.</summary>
+    public bool AppliesOnce => IsToggle || (HasTrigger && Until.Count == 0);
 
     /// <summary>A click-to-start setter that stops after a while, so its tray icon can offer other lengths.</summary>
-    public bool HasTimer => !IsAutomatic && Until.Any(c => c is ElapsedCondition);
+    public bool HasTimer => Start == StartMode.Manual && Until.Any(c => c is ElapsedCondition);
 
     /// <summary>The minutes of its own "after a while" timer, or null without one.</summary>
     public int? TimerMinutes => Until.OfType<ElapsedCondition>().Select(e => (int?)e.Minutes).Min();

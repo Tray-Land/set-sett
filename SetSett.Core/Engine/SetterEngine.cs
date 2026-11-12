@@ -132,7 +132,7 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
         return since;
     }
 
-    /// <summary>A setter with no stop condition, fired by a time: sets its values, with no run and nothing to put back.</summary>
+    /// <summary>A click-to-toggle setter or an instant with no stop condition: changes values without a run or put-back.</summary>
     private async Task ApplyOnceAsync(Setter setter)
     {
         if (!setter.CanRun || !setter.Enabled)
@@ -144,8 +144,10 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
         await ApplyChangesAsync(setter, _ => true, claim: false);
     }
 
-    /// <summary>Starts a setter: snapshots each setting, saves the claim, then sets the value.</summary>
-    public Task StartAsync(Setter setter, SensorSnapshot now) => StartAsync(setter, new SetterRun(setter.Id, now.UtcNow));
+    /// <summary>Starts a run with saved snapshots, or switches a click-to-toggle setter once with no run.</summary>
+    public Task StartAsync(Setter setter, SensorSnapshot now) => setter.IsToggle
+        ? ApplyOnceAsync(setter)
+        : StartAsync(setter, new SetterRun(setter.Id, now.UtcNow));
 
     /// <summary>
     /// A length picked from the setter's tray icon menu: starts it to stop that long from now, in place
@@ -154,6 +156,12 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
     /// </summary>
     public async Task StartForAsync(Setter setter, SensorSnapshot now, TimeSpan length)
     {
+        if (setter.IsToggle)
+        {
+            Log.Warn("Engine", $"Timed start of {setter.Name} [{setter.Id}] ignored: click-to-toggle setters have no run");
+            return;
+        }
+
         DateTime ends = now.UtcNow + length;
         if (State.RunOf(setter.Id) is { } running)
         {
@@ -270,10 +278,10 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
         foreach (SettingChange change in setter.Changes.Where(include))
         {
             ISetting? setting = catalog.Find(change.SettingId);
-            if (setting is null || !setting.Info.Accepts(change.Value))
+            if (setting is null || (setter.IsToggle ? !setting.Info.CanToggle : !setting.Info.Accepts(change.Value)))
             {
                 // Skipped, not silent: report it like a refused write so the flyout can say so.
-                Log.Warn("Engine", $"{change.SettingId} skipped for {setter.Name}: {(setting is null ? "unknown setting" : "value not accepted")}");
+                Log.Warn("Engine", $"{change.SettingId} skipped for {setter.Name}: {(setting is null ? "unknown setting" : setter.IsToggle ? "setting cannot be toggled" : "value not accepted")}");
                 _problems.Add(new SettingProblem(setter.Id, change.SettingId, DateTime.UtcNow));
                 continue;
             }
@@ -298,22 +306,36 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
                 appliedFamilies.Add(available);
             }
 
-            SettingValue? current = hold || skipIfAlreadySet ? await setting.ReadAsync() : null;
+            SettingValue? current = hold || skipIfAlreadySet || setter.IsToggle ? await setting.ReadAsync() : null;
+            SettingValue? value = setter.IsToggle ? setting.Info.OtherValue(current) : change.Value;
+            if (value is null)
+            {
+                Log.Warn("Engine", $"{change.SettingId} could not be toggled for {setter.Name}: current value is unreadable or invalid");
+                _problems.Add(new SettingProblem(setter.Id, change.SettingId, DateTime.UtcNow));
+                continue;
+            }
+
             if (hold)
             {
-                State = ClaimLedger.Apply(State, change.SettingId, setter.Id, current, change.Value);
+                State = ClaimLedger.Apply(State, change.SettingId, setter.Id, current, value);
                 store.Save(State); // The snapshot is on disk before Windows changes.
             }
 
-            if (skipIfAlreadySet && change.Value.Matches(current))
+            if (skipIfAlreadySet && value.Matches(current))
             {
                 Log.Debug("Engine", $"{change.SettingId} already set; not written");
                 continue;
             }
 
-            if (await setting.WriteAsync(change.Value))
+            if (await setting.WriteAsync(value))
             {
                 Log.Info("Engine", $"Set {change.SettingId} for {setter.Name}");
+                if (setter.IsToggle && State.ClaimsOn(change.SettingId).Count > 0)
+                {
+                    // This is a lasting user change, even if a later click returns to a claimed value.
+                    State = State.WithClaims(change.SettingId, []);
+                    store.Save(State);
+                }
             }
             else
             {

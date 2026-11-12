@@ -10,6 +10,8 @@ internal sealed class FakeSetting(SettingInfo info, SettingValue initial) : ISet
 
     public bool Available { get; set; } = true;
 
+    public bool Readable { get; set; } = true;
+
     public bool Refuse { get; set; }
 
     public int Writes { get; private set; }
@@ -36,7 +38,7 @@ internal sealed class FakeSetting(SettingInfo info, SettingValue initial) : ISet
 
     public Task<bool> IsAvailableAsync() => Task.FromResult(Available);
 
-    public Task<SettingValue?> ReadAsync() => Task.FromResult<SettingValue?>(Available ? Value : null);
+    public Task<SettingValue?> ReadAsync() => Task.FromResult<SettingValue?>(Available && Readable ? Value : null);
 
     public Task<bool> WriteAsync(SettingValue value)
     {
