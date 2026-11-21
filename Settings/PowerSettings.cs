@@ -28,7 +28,7 @@ internal sealed partial class PowerTimeoutSetting(SettingInfo info, Guid subgrou
             Glyphs.Monitor,
             ValueKind.Duration)
         {
-            Description = "How long the PC waits before turning the screen off.",
+            Description = "Changes the active Windows power plan's screen timeout. To keep the display and PC on while the setter runs, use Keep awake.",
             Durations = SettingIds.TimeoutChoices,
             Family = "screen.off",
             Scope = onBattery ? "On battery" : "Plugged in",
@@ -45,7 +45,7 @@ internal sealed partial class PowerTimeoutSetting(SettingInfo info, Guid subgrou
             Glyphs.Moon,
             ValueKind.Duration)
         {
-            Description = "How long the PC waits before going to sleep.",
+            Description = "Changes the active Windows power plan's sleep timeout. To prevent sleep while the setter runs, use Keep awake.",
             Durations = SettingIds.TimeoutChoices,
             Family = "sleep",
             Scope = onBattery ? "On battery" : "Plugged in",
@@ -158,7 +158,7 @@ internal sealed partial class KeepAwakeSetting : ISetting
 
     public SettingInfo Info { get; } = new(SettingIds.KeepAwake, "Keep awake", "Power", Glyphs.Power, ValueKind.Choice)
     {
-        Description = "Stops the PC from sleeping while the setter is on. Ends when Set Sett exits.",
+        Description = "Temporarily holds the PC awake without changing the Windows power plan. The hold ends when the setter stops or Set Sett exits.",
         Choices =
         [
             new(SettingIds.AwakeOff, "Off"),
@@ -182,52 +182,87 @@ internal sealed partial class KeepAwakeSetting : ISetting
         // Two independent holds, the way Windows' own apps do it: a power request (what
         // `powercfg /requests` names) and a thread execution state (what Caffeinated and most
         // keep-awake tools use). Some managed PCs honor only one, so a hold is good if either took.
-        bool request = ApplyPowerRequest(choice.Id);
-        bool state = ApplyExecutionState(choice.Id);
-        bool ok = request || state;
+        string previous = _current;
+        NativeAttempt request = ApplyPowerRequest(choice.Id);
+        NativeAttempt state = ApplyExecutionState(choice.Id);
+        bool ok = choice.Id == SettingIds.AwakeOff
+            ? request.Ok && state.Ok
+            : request.Ok || state.Ok;
         if (ok)
         {
             _current = choice.Id;
         }
         else
         {
-            Log.Warn("KeepAwake", $"Neither the power request nor the execution state took ({choice.Id})");
+            Log.Warn("KeepAwake", choice.Id == SettingIds.AwakeOff
+                ? "The keep-awake request was not fully cleared"
+                : $"Neither the power request nor the execution state took ({choice.Id})");
         }
 
-        Log.Info("KeepAwake", $"{choice.Id}: power request {(request ? "set" : "FAILED")}, execution state {(state ? "set" : "FAILED")}");
+        Log.Info("KeepAwake", $"{previous} -> {choice.Id}: power request {request.Detail}; execution state {state.Detail}");
         return Task.FromResult(ok);
     }
 
-    private bool ApplyPowerRequest(string mode)
+    private NativeAttempt ApplyPowerRequest(string mode)
     {
         try
         {
-            if (!EnsureRequest())
+            if (!EnsureRequest(out int createError))
             {
-                Log.Warn("KeepAwake", $"PowerCreateRequest failed (error {Marshal.GetLastPInvokeError()})");
-                return false;
+                var failure = new NativeAttempt(false, $"PowerCreateRequest FAILED (error {createError})");
+                Log.Warn("KeepAwake", failure.Detail);
+                return failure;
             }
 
-            PowerClearRequest(_request, PowerRequestSystemRequired);
-            PowerClearRequest(_request, PowerRequestDisplayRequired);
-            return mode switch
+            bool clearedSystem = PowerClearRequest(_request, PowerRequestSystemRequired);
+            int clearSystemError = Marshal.GetLastPInvokeError();
+            bool clearedDisplay = PowerClearRequest(_request, PowerRequestDisplayRequired);
+            int clearDisplayError = Marshal.GetLastPInvokeError();
+
+            bool ok;
+            string setDetail;
+            if (mode == SettingIds.AwakeOff)
             {
-                SettingIds.AwakeSystem => PowerSetRequest(_request, PowerRequestSystemRequired),
-                SettingIds.AwakeDisplay => PowerSetRequest(_request, PowerRequestSystemRequired)
-                    && PowerSetRequest(_request, PowerRequestDisplayRequired),
-                _ => true,
-            };
+                ok = clearedSystem && clearedDisplay;
+                setDetail = "";
+            }
+            else if (mode == SettingIds.AwakeSystem)
+            {
+                bool setSystem = PowerSetRequest(_request, PowerRequestSystemRequired);
+                int setSystemError = Marshal.GetLastPInvokeError();
+                ok = clearedSystem && clearedDisplay && setSystem;
+                setDetail = $"; set system {Result(setSystem, setSystemError)}";
+            }
+            else
+            {
+                bool setSystem = PowerSetRequest(_request, PowerRequestSystemRequired);
+                int setSystemError = Marshal.GetLastPInvokeError();
+                bool setDisplay = PowerSetRequest(_request, PowerRequestDisplayRequired);
+                int setDisplayError = Marshal.GetLastPInvokeError();
+                ok = clearedSystem && clearedDisplay && setSystem && setDisplay;
+                setDetail = $"; set system {Result(setSystem, setSystemError)}; set display {Result(setDisplay, setDisplayError)}";
+            }
+
+            var result = new NativeAttempt(
+                ok,
+                $"clear system {Result(clearedSystem, clearSystemError)}; clear display {Result(clearedDisplay, clearDisplayError)}{setDetail}");
+            if (!ok)
+            {
+                Log.Warn("KeepAwake", $"Power request did not reach the requested mode ({mode}): {result.Detail}");
+            }
+
+            return result;
         }
         catch (Exception ex)
         {
             Log.Warn("KeepAwake", "Power request failed", ex);
-            return false;
+            return new NativeAttempt(false, $"FAILED ({ex.GetType().Name})");
         }
     }
 
     // SetThreadExecutionState with ES_CONTINUOUS lasts only as long as the calling thread, so it
     // runs on one dedicated thread that stays alive (a pool or UI thread could end or be swapped).
-    private bool ApplyExecutionState(string mode)
+    private NativeAttempt ApplyExecutionState(string mode)
     {
         uint flags = EsContinuous | mode switch
         {
@@ -238,7 +273,7 @@ internal sealed partial class KeepAwakeSetting : ISetting
 
         try
         {
-            var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var done = new TaskCompletionSource<NativeAttempt>(TaskCreationOptions.RunContinuationsAsynchronously);
             lock (_stateLock)
             {
                 _stateWork.Enqueue((flags, done));
@@ -250,12 +285,24 @@ internal sealed partial class KeepAwakeSetting : ISetting
             }
 
             _stateSignal.Release();
-            return done.Task.Wait(TimeSpan.FromSeconds(5)) && done.Task.Result;
+            if (!done.Task.Wait(TimeSpan.FromSeconds(5)))
+            {
+                Log.Warn("KeepAwake", $"SetThreadExecutionState timed out ({mode})");
+                return new NativeAttempt(false, "TIMED OUT");
+            }
+
+            NativeAttempt result = done.Task.GetAwaiter().GetResult();
+            if (!result.Ok)
+            {
+                Log.Warn("KeepAwake", $"Execution state did not reach the requested mode ({mode}): {result.Detail}");
+            }
+
+            return result;
         }
         catch (Exception ex)
         {
             Log.Warn("KeepAwake", "Execution state failed", ex);
-            return false;
+            return new NativeAttempt(false, $"FAILED ({ex.GetType().Name})");
         }
     }
 
@@ -264,14 +311,18 @@ internal sealed partial class KeepAwakeSetting : ISetting
         while (true)
         {
             _stateSignal.Wait();
-            (uint flags, TaskCompletionSource<bool> done) work;
+            (uint flags, TaskCompletionSource<NativeAttempt> done) work;
             lock (_stateLock)
             {
                 work = _stateWork.Dequeue();
             }
 
             // A zero return means the call failed.
-            work.done.TrySetResult(SetThreadExecutionState(work.flags) != 0);
+            uint previous = SetThreadExecutionState(work.flags);
+            int error = Marshal.GetLastPInvokeError();
+            work.done.TrySetResult(previous == 0
+                ? new NativeAttempt(false, $"FAILED (error {error})")
+                : new NativeAttempt(true, $"set (previous 0x{previous:X8})"));
         }
     }
 
@@ -280,14 +331,15 @@ internal sealed partial class KeepAwakeSetting : ISetting
     private const uint EsDisplayRequired = 0x2;
 
     private readonly object _stateLock = new();
-    private readonly Queue<(uint Flags, TaskCompletionSource<bool> Done)> _stateWork = new();
+    private readonly Queue<(uint Flags, TaskCompletionSource<NativeAttempt> Done)> _stateWork = new();
     private readonly SemaphoreSlim _stateSignal = new(0);
     private Thread? _stateThread;
 
-    private unsafe bool EnsureRequest()
+    private unsafe bool EnsureRequest(out int error)
     {
         if (_request != 0)
         {
+            error = 0;
             return true;
         }
 
@@ -299,6 +351,7 @@ internal sealed partial class KeepAwakeSetting : ISetting
             SimpleReasonString = _reason,
         };
         nint request = PowerCreateRequest(ref context);
+        error = Marshal.GetLastPInvokeError();
         if (request == -1 || request == 0)
         {
             return false;
@@ -307,6 +360,10 @@ internal sealed partial class KeepAwakeSetting : ISetting
         _request = request;
         return true;
     }
+
+    private static string Result(bool ok, int error) => ok ? "ok" : $"FAILED (error {error})";
+
+    private readonly record struct NativeAttempt(bool Ok, string Detail);
 
     // REASON_CONTEXT: the union is sized by its Detailed member (module, id, count, strings pointer).
     [StructLayout(LayoutKind.Sequential)]
@@ -319,17 +376,17 @@ internal sealed partial class KeepAwakeSetting : ISetting
         public nint DetailedPadding2;
     }
 
-    [LibraryImport("kernel32.dll")]
+    [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial uint SetThreadExecutionState(uint flags);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial nint PowerCreateRequest(ref ReasonContext context);
 
-    [LibraryImport("kernel32.dll")]
+    [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool PowerSetRequest(nint request, int type);
 
-    [LibraryImport("kernel32.dll")]
+    [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool PowerClearRequest(nint request, int type);
 }

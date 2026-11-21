@@ -326,6 +326,19 @@ public sealed class StorageAndTextTests
     }
 
     [TestMethod]
+    public void ScreenOnTemplate_UsesAProcessHeldDisplayRequest()
+    {
+        Setter setter = SetterTemplates.All
+            .Single(t => t.Name == "Screen stays on for an hour")
+            .Definition;
+
+        SettingChange change = setter.Changes.Single();
+        Assert.AreEqual(SettingIds.KeepAwake, change.SettingId);
+        Assert.AreEqual(new ChoiceValue(SettingIds.AwakeDisplay), change.Value);
+        Assert.IsTrue(setter.Until.OfType<ElapsedCondition>().Any(c => c.Minutes == 60));
+    }
+
+    [TestMethod]
     public void Import_ValidatesAndAssignsFreshIdentity()
     {
         var volume = FakeSetting.Volume();

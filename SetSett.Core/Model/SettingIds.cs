@@ -27,7 +27,10 @@ public static class SettingIds
     public const string AwakeSystem = "system";
     public const string AwakeDisplay = "display";
 
-    /// <summary>Choices for timeouts, in seconds; 0 is never.</summary>
+    /// <summary>
+    /// Finite timeout choices offered for new edits, in seconds. Saved values of 0 remain valid
+    /// for compatibility, but indefinite holds belong to Keep awake.
+    /// </summary>
     public static readonly IReadOnlyList<int> TimeoutChoices =
-        [0, 60, 120, 180, 300, 600, 900, 1200, 1800, 2700, 3600, 7200, 10800, 18000];
+        [60, 120, 180, 300, 600, 900, 1200, 1800, 2700, 3600, 7200, 10800, 18000];
 }

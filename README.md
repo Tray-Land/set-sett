@@ -20,7 +20,13 @@ You build **setters**. A setter is:
 | Personalization | Theme (light/dark for Windows and apps together, or either alone), Transparency effects |
 | Sound | Volume, Mute, Microphone mute (default devices) |
 | Connections | Wi-Fi, Bluetooth |
-| Power | Screen off after and Sleep after (always, only when plugged in, or only on battery), Keep awake |
+| Power | Screen off after and Sleep after (finite delays, always or by power source), Keep awake |
+
+**Power timeouts versus Keep awake.** New **Screen off after** and **Sleep after** edits offer
+finite delays in the active Windows power plan. Use **Keep awake** for an indefinite hold while
+the setter runs: **PC stays awake** prevents sleep while allowing the display to turn off, and
+**PC and screen stay on** holds both. The hold is released when the setter stops or Set Sett exits.
+Existing or imported setters that already use a timeout of **Never** remain supported.
 
 **One-click switches.** In a setter's editor, choose **Toggle settings on each click** under **When it starts**. Each click in the flyout, in the main tray menu, or on its own tray icon reads the current Windows value and switches to the other one, even if you changed it outside Set Sett. This works with **Theme** (Light / Dark, for Windows, apps, or both), **Transparency effects**, **Mute**, **Microphone mute**, **Wi-Fi**, and **Bluetooth**. Each selected setting switches independently, including the Windows and app themes when you choose Both. There is no running state, timer, or put-back: the new values stay in place, including on Quit. Its button and icon are actions, not live indicators of Windows settings. Volume and timeouts need specific values; Keep awake uses the normal start/stop mode instead. Existing setters keep their start/stop behavior unless you choose the new mode.
 

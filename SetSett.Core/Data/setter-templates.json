@@ -107,24 +107,17 @@
     },
     {
       "name": "Screen stays on for an hour",
-      "description": "Click to stop the screen turning off for the next hour.",
+      "description": "Click to keep the PC and screen awake for the next hour.",
       "definition": {
         "id": "template.screen-on-hour",
         "name": "Screen on for 1 hr",
         "glyph": "\uE7F4",
         "changes": [
           {
-            "settingId": "screen.off.ac",
+            "settingId": "keepawake",
             "value": {
-              "type": "number",
-              "value": 0
-            }
-          },
-          {
-            "settingId": "screen.off.dc",
-            "value": {
-              "type": "number",
-              "value": 0
+              "type": "choice",
+              "id": "display"
             }
           }
         ],

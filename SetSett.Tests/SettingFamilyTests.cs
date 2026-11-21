@@ -112,6 +112,18 @@ public sealed class SettingFamilyTests
     }
 
     [TestMethod]
+    public void Add_NewTimeoutUsesAFiniteDelay()
+    {
+        var (catalog, ac, _) = Catalog();
+
+        IReadOnlyList<SettingChange> changes = SettingFamilies.Add([], catalog, ac);
+
+        Assert.IsTrue(changes.All(c => c.Value is NumberValue { Value: > 0 }));
+        Assert.AreEqual(new NumberValue(60), changes[0].Value);
+        Assert.IsTrue(ac.Info.Accepts(new NumberValue(0)), "saved Never values remain valid");
+    }
+
+    [TestMethod]
     public void MemberIdInAnotherCase_CountsAsUsed()
     {
         var (catalog, ac, _) = Catalog();
