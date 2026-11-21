@@ -39,6 +39,16 @@ internal static class EditorParts
         TextWrapping = TextWrapping.Wrap,
     };
 
+    public static DropDownButton AddButton(string text, MenuFlyout menu)
+    {
+        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        content.Children.Add(new FontIcon { Glyph = "\uE710", FontSize = 12 });
+        content.Children.Add(new TextBlock { Text = text });
+        var button = new DropDownButton { Content = content, Flyout = menu, Margin = new Thickness(0, 4, 0, 0) };
+        AutomationProperties.SetName(button, text);
+        return button;
+    }
+
     public static Border Card(UIElement child) => new()
     {
         Padding = new Thickness(16, 12, 16, 12),
@@ -59,11 +69,16 @@ internal static class EditorParts
     }
 
     /// <summary>A card row that leads with what's been chosen: a small label over the value in large text.</summary>
-    public static Border ValueRow(string glyph, string label, TextBlock value, FrameworkElement? control, Action? remove, FrameworkElement? below = null)
+    public static Border ValueRow(string glyph, string label, TextBlock value, FrameworkElement? control, Action? remove, FrameworkElement? below = null, FrameworkElement? status = null)
     {
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         text.Children.Add(Caption(label));
         text.Children.Add(value);
+        if (status is not null)
+        {
+            text.Children.Add(status);
+        }
+
         return RowOf(glyph, label, text, control, remove, below);
     }
 

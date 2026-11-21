@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using SetSett.Controls;
+using SetSett.Engine;
 using SetSett.Model;
 using SetSett.Sensing;
 using SetSett.Services;
@@ -34,6 +35,7 @@ internal static class ConditionEditors
         new("Device connected", Glyphs.Monitor, () => new DeviceCondition("")),
         new("App running", Glyphs.Processing, () => new ProcessCondition("")),
         new("Power or battery", Glyphs.Lightning, () => new PowerCondition(PowerCheck.OnBattery, PowerCondition.DefaultPercent)),
+        new("Condition group", Glyphs.Settings, () => new ConditionGroup()),
         .. PlaceService.LocationAllowed
             ? [new Kind("At a place", Glyphs.Location, () => new PlaceCondition(null, PlaceCondition.DefaultRadius, "Home"))]
             : Array.Empty<Kind>(),
@@ -50,13 +52,28 @@ internal static class ConditionEditors
         new("When a network disconnects", Glyphs.WiFi, () => new NetworkCondition(SetterHost.Snapshot.Networks?.FirstOrDefault() ?? "") { Not = true }),
         new("When a device disconnects", Glyphs.Monitor, () => new DeviceCondition("") { Not = true }),
         new("Power or battery", Glyphs.Lightning, () => new PowerCondition(PowerCheck.BatteryBelow, PowerCondition.DefaultPercent)),
+        new("Condition group", Glyphs.Settings, () => new ConditionGroup()),
     ];
+
+    public static DropDownButton AddConditionButton(string text, IReadOnlyList<Kind> kinds, Action<Condition> add)
+    {
+        var menu = new MenuFlyout();
+        foreach (Kind kind in kinds)
+        {
+            var item = new MenuFlyoutItem { Text = kind.Label, Icon = new FontIcon { Glyph = kind.Glyph } };
+            item.Click += (_, _) => add(kind.Create());
+            menu.Items.Add(item);
+        }
+
+        return AddButton(text, menu);
+    }
 
     /// <summary>
     /// A condition's card: its value in large text with an Edit link that opens the controls below it.
     /// A condition that's new or still missing something opens ready to edit, so an unset one is never hidden.
     /// </summary>
-    public static Border Row(Condition condition, bool stop, bool startEditing, Action<Condition> changed, Action remove)
+    public static Border Row(Condition condition, bool stop, bool startEditing, TextBlock status,
+        Func<Condition, ConditionStatus> statusOf, Action<Condition> changed, Action remove)
     {
         // The style trims the first letter's side bearing, which would start it left of the small label above.
         var value = new TextBlock { Style = Style("BodyLargeTextBlockStyle"), TextWrapping = TextWrapping.Wrap, OpticalMarginAlignment = OpticalMarginAlignment.None };
@@ -77,6 +94,7 @@ internal static class ConditionEditors
 
         (string title, string glyph) = condition switch
         {
+            ConditionGroup => ("Condition group", Glyphs.Settings),
             TimeWindowCondition => ("Time of day", Glyphs.Clock),
             SunCondition => (stop ? "At sunrise or sunset" : "Sunrise or sunset", Glyphs.Sun),
             NetworkCondition => ("Network", Glyphs.WiFi),
@@ -98,7 +116,7 @@ internal static class ConditionEditors
         {
             if (editing && editor.Child is null)
             {
-                editor.Child = Editor(condition, stop, Changed);
+                editor.Child = Editor(condition, stop, statusOf, Changed);
             }
 
             editor.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
@@ -108,11 +126,12 @@ internal static class ConditionEditors
 
         edit.Click += (_, _) => SetEditing(editor.Visibility == Visibility.Collapsed);
         SetEditing(startEditing || SetterText.Missing(condition, PlaceService.Home is not null) is not null);
-        return ValueRow(glyph, title, value, edit, remove, below: editor);
+        return ValueRow(glyph, title, value, edit, remove, below: editor, status: status);
     }
 
-    private static FrameworkElement Editor(Condition condition, bool stop, Action<Condition> set) => condition switch
+    private static FrameworkElement Editor(Condition condition, bool stop, Func<Condition, ConditionStatus> statusOf, Action<Condition> set) => condition switch
     {
+        ConditionGroup c => Group(c, stop, statusOf, set),
         TimeWindowCondition c => TimeWindow(c, set),
         SunCondition c => Sun(c, stop, set),
         NetworkCondition c => Named(c, c.Network, NetworkNames(), stop ? ["Disconnects from", "Connects to"] : ["Connected to", "Not connected to"], stop,
@@ -129,6 +148,74 @@ internal static class ConditionEditors
             Number("For (minutes)", c.Minutes, 1, 60, m => set(c = c with { Minutes = m }))),
         _ => new TextBlock(),
     };
+
+    private static FrameworkElement Group(ConditionGroup group, bool stop, Func<Condition, ConditionStatus> statusOf, Action<Condition> set)
+    {
+        var panel = new StackPanel { Spacing = 8 };
+        var rows = new StackPanel { Spacing = 4 };
+        var statuses = new List<TextBlock>();
+        Condition? justAdded = null;
+
+        void Refresh()
+        {
+            for (int i = 0; i < statuses.Count && i < group.Conditions.Count; i++)
+            {
+                StatusIndicator.Set(statuses[i], statusOf(group.Conditions[i]));
+            }
+        }
+
+        void BuildRows()
+        {
+            rows.Children.Clear();
+            statuses.Clear();
+            for (int i = 0; i < group.Conditions.Count; i++)
+            {
+                int index = i;
+                var status = StatusIndicator.Create();
+                statuses.Add(status);
+                StatusIndicator.Set(status, statusOf(group.Conditions[i]));
+                rows.Children.Add(Row(group.Conditions[i], stop, ReferenceEquals(group.Conditions[i], justAdded), status, statusOf,
+                    next =>
+                    {
+                        group = group with { Conditions = [.. group.Conditions.Select((c, j) => j == index ? next : c)] };
+                        set(group);
+                    },
+                    () =>
+                    {
+                        group = group with { Conditions = [.. group.Conditions.Where((_, j) => j != index)] };
+                        set(group);
+                        BuildRows();
+                    }));
+            }
+        }
+
+        string[] choices = stop
+            ? ["All of these happen", "Any of these happens"]
+            : ["All of these are true", "Any of these is true"];
+        panel.Children.Add(Combo(choices, group.Match == ConditionMatch.All ? 0 : 1, i =>
+        {
+            group = group with { Match = i == 0 ? ConditionMatch.All : ConditionMatch.Any };
+            set(group);
+        }, "Group match", 220));
+        panel.Children.Add(rows);
+        panel.Children.Add(AddConditionButton("Add a condition to group", stop ? StopKinds() : StartKinds(), condition =>
+        {
+            justAdded = condition;
+            group = group with { Conditions = [.. group.Conditions, condition] };
+            set(group);
+            BuildRows();
+            justAdded = null;
+        }));
+        panel.Loaded += (_, _) =>
+        {
+            SetterHost.Changed -= Refresh;
+            SetterHost.Changed += Refresh;
+            Refresh();
+        };
+        panel.Unloaded += (_, _) => SetterHost.Changed -= Refresh;
+        BuildRows();
+        return panel;
+    }
 
     // Controls with a header are taller than ones without, so a row lines them up along the bottom.
     // A child that set its own alignment keeps it.

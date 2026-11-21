@@ -50,6 +50,47 @@ public sealed class SetterPolicyTests
     }
 
     [TestMethod]
+    public void ConditionStatus_ShowsEachStartAnswerIndependently()
+    {
+        var network = new NetworkCondition("Office");
+        var hours = new TimeWindowCondition(new TimeOnly(9, 0), new TimeOnly(17, 0), WeekDays.Every);
+        Setter setter = WhileOn("Office") with { When = [network, hours] };
+        SensorSnapshot now = At.Local(2026, 10, 31, 18) with { Networks = ["Office"] };
+
+        Assert.AreEqual(ConditionStatus.Active, ConditionStatusPolicy.Start(setter, network, now));
+        Assert.AreEqual(ConditionStatus.Inactive, ConditionStatusPolicy.Start(setter, hours, now));
+        Assert.AreEqual(ConditionStatus.Inactive, ConditionStatusPolicy.Start(setter, network with { Not = true }, now));
+        Assert.AreEqual(ConditionStatus.Unknown, ConditionStatusPolicy.Start(setter, network, now with { Networks = null }));
+    }
+
+    [TestMethod]
+    public void ConditionStatus_DoesNotGuessWhenNotWatchedOrForAnInstant()
+    {
+        var network = new NetworkCondition("Office");
+        var instant = new TimeWindowCondition(new TimeOnly(9, 0), new TimeOnly(17, 0), WeekDays.Every) { AtTime = true };
+        Setter setter = WhileOn("Office");
+        SensorSnapshot now = At.Local(2026, 10, 31, 9) with { Networks = ["Office"] };
+
+        Assert.AreEqual(ConditionStatus.NotMonitored, ConditionStatusPolicy.Start(setter with { Enabled = false }, network, now));
+        Assert.AreEqual(ConditionStatus.NotMonitored, ConditionStatusPolicy.Start(setter with { Changes = [] }, network, now));
+        Assert.AreEqual(ConditionStatus.NotMonitored, ConditionStatusPolicy.Start(setter with { Start = StartMode.Manual }, network, now));
+        Assert.AreEqual(ConditionStatus.Instant, ConditionStatusPolicy.Start(setter, instant, now));
+        Assert.AreEqual(ConditionStatus.NotMonitored, ConditionStatusPolicy.Stop(network, null, now));
+    }
+
+    [TestMethod]
+    public void ConditionStatus_StopUsesRunAndChosenTimerEnd()
+    {
+        SensorSnapshot start = At.Local(2026, 10, 31, 9);
+        var timer = new ElapsedCondition(60);
+        var run = new SetterRun("test", start.UtcNow) { TimerEndsUtc = start.UtcNow.AddMinutes(15) };
+
+        Assert.AreEqual(ConditionStatus.Inactive, ConditionStatusPolicy.Stop(timer, run, start.Plus(TimeSpan.FromMinutes(14))));
+        Assert.AreEqual(ConditionStatus.Active, ConditionStatusPolicy.Stop(timer, run, start.Plus(TimeSpan.FromMinutes(15))));
+        Assert.AreEqual(ConditionStatus.Unknown, ConditionStatusPolicy.Stop(new NetworkCondition("Office"), run, start));
+    }
+
+    [TestMethod]
     public void StopCondition_LatchesAnAutomaticSetterUntilItsConditionsReset()
     {
         Setter setter = WhileOn("Office") with { Until = [new ElapsedCondition(60)] };

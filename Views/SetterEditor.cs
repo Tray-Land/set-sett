@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using SetSett.Controls;
+using SetSett.Engine;
 using SetSett.Model;
 using SetSett.Services;
 using SetSett.Settings;
@@ -44,6 +45,8 @@ internal sealed partial class SetterEditor : UserControl
     private readonly StackPanel _start = new() { Spacing = 4 };
     private readonly StackPanel _stop = new() { Spacing = 4 };
     private readonly StackPanel _afterwards = new() { Spacing = 4 };
+    private readonly List<TextBlock> _startStatuses = [];
+    private readonly List<TextBlock> _stopStatuses = [];
     private readonly DispatcherQueueTimer _sliderTimer;
     private readonly string _radioGroup = Guid.NewGuid().ToString("N");
     private Action? _pendingSlider;
@@ -65,6 +68,7 @@ internal sealed partial class SetterEditor : UserControl
         {
             SetterHost.Changed -= OnHostChanged;
             SetterHost.Changed += OnHostChanged;
+            RefreshConditionStatuses();
         };
         Unloaded += (_, _) =>
         {
@@ -107,6 +111,23 @@ internal sealed partial class SetterEditor : UserControl
                 _enabledToggle.IsOn = stored.Enabled;
                 _syncing = false;
             }
+        }
+
+        RefreshConditionStatuses();
+    }
+
+    private void RefreshConditionStatuses()
+    {
+        SensorSnapshot now = SetterHost.Snapshot;
+        SetterRun? run = SetterHost.Run.RunOf(_setter.Id);
+        for (int i = 0; i < _startStatuses.Count && i < _setter.When.Count; i++)
+        {
+            StatusIndicator.Set(_startStatuses[i], ConditionStatusPolicy.Start(_setter, _setter.When[i], now));
+        }
+
+        for (int i = 0; i < _stopStatuses.Count && i < _setter.Until.Count; i++)
+        {
+            StatusIndicator.Set(_stopStatuses[i], ConditionStatusPolicy.Stop(_setter.Until[i], run, now));
         }
     }
 
@@ -384,21 +405,12 @@ internal sealed partial class SetterEditor : UserControl
         return AddButton("Add a setting", menu);
     }
 
-    private static DropDownButton AddButton(string text, MenuFlyout menu)
-    {
-        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        content.Children.Add(new FontIcon { Glyph = "", FontSize = 12 });
-        content.Children.Add(new TextBlock { Text = text });
-        var button = new DropDownButton { Content = content, Flyout = menu, Margin = new Thickness(0, 4, 0, 0) };
-        AutomationProperties.SetName(button, text);
-        return button;
-    }
-
     // --- When it starts ---------------------------------------------------------------------------
 
     private void BuildStart()
     {
         _start.Children.Clear();
+        _startStatuses.Clear();
 
         // The left padding starts each label where a row's title starts: the circle fills the glyph slot.
         var modePadding = new Thickness(GlyphGap, 6, 0, 0);
@@ -455,7 +467,11 @@ internal sealed partial class SetterEditor : UserControl
         for (int i = 0; i < _setter.When.Count; i++)
         {
             int index = i;
-            _start.Children.Add(ConditionEditors.Row(_setter.When[i], stop: false, startEditing: ReferenceEquals(_setter.When[i], _justAdded),
+            var status = StatusIndicator.Create();
+            _startStatuses.Add(status);
+            StatusIndicator.Set(status, ConditionStatusPolicy.Start(_setter, _setter.When[i], SetterHost.Snapshot));
+            _start.Children.Add(ConditionEditors.Row(_setter.When[i], stop: false, startEditing: ReferenceEquals(_setter.When[i], _justAdded), status,
+                condition => ConditionStatusPolicy.Start(_setter, condition, SetterHost.Snapshot),
                 next =>
                 {
                     Commit(_setter with { When = [.. _setter.When.Select((c, j) => j == index ? next : c)] });
@@ -474,7 +490,7 @@ internal sealed partial class SetterEditor : UserControl
             _start.Children.Add(Caption("Add what starts it. It runs while that's true and stops when it ends."));
         }
 
-        _start.Children.Add(AddConditionButton("Add a condition", ConditionEditors.StartKinds(), condition =>
+        _start.Children.Add(ConditionEditors.AddConditionButton("Add a condition", ConditionEditors.StartKinds(), condition =>
         {
             _justAdded = condition;
             Commit(_setter with { When = [.. _setter.When, condition] });
@@ -508,6 +524,7 @@ internal sealed partial class SetterEditor : UserControl
             ? Caption("The switched values stay in place, including when you quit Set Sett. There is nothing to put back.")
             : PutBackCard());
         _stop.Children.Clear();
+        _stopStatuses.Clear();
         if (_setter.IsToggle)
         {
             _stop.Children.Add(Caption("Each click switches the settings once. It doesn't stay running, so there is no timer or stop condition."));
@@ -517,6 +534,8 @@ internal sealed partial class SetterEditor : UserControl
         // The wording only says "these" when there's a list to point at.
         _stop.Children.Add(Caption((_setter.IsAutomatic, _setter.Until.Count > 0) switch
         {
+            (true, true) when _setter.HasGroupedTrigger => "A run started by a condition ends when its conditions end, or when any stop condition happens. A run started at a time ends on a stop condition.",
+            (true, false) when _setter.HasGroupedTrigger => "A run started by a condition ends when its conditions end. At a time, it sets its values once and leaves them.",
             (true, true) when _setter.HasTrigger => "It starts at its time and stops when any of these happens.",
             (true, false) when _setter.HasTrigger => "With no way to stop, it just sets its values at its time and leaves them. Add a way to stop it to hold them for a while and then put them back.",
             (true, true) => "It stops when its start conditions end, or sooner if any of these happens. After stopping sooner, it waits for its conditions to start again.",
@@ -543,7 +562,11 @@ internal sealed partial class SetterEditor : UserControl
         for (int i = 0; i < _setter.Until.Count; i++)
         {
             int index = i;
-            _stop.Children.Add(ConditionEditors.Row(_setter.Until[i], stop: true, startEditing: ReferenceEquals(_setter.Until[i], _justAdded),
+            var status = StatusIndicator.Create();
+            _stopStatuses.Add(status);
+            StatusIndicator.Set(status, ConditionStatusPolicy.Stop(_setter.Until[i], SetterHost.Run.RunOf(_setter.Id), SetterHost.Snapshot));
+            _stop.Children.Add(ConditionEditors.Row(_setter.Until[i], stop: true, startEditing: ReferenceEquals(_setter.Until[i], _justAdded), status,
+                condition => ConditionStatusPolicy.Stop(condition, SetterHost.Run.RunOf(_setter.Id), SetterHost.Snapshot),
                 next => Commit(_setter with { Until = [.. _setter.Until.Select((c, j) => j == index ? next : c)] }),
                 () =>
                 {
@@ -552,26 +575,13 @@ internal sealed partial class SetterEditor : UserControl
                 }));
         }
 
-        _stop.Children.Add(AddConditionButton("Add a way to stop", ConditionEditors.StopKinds(), condition =>
+        _stop.Children.Add(ConditionEditors.AddConditionButton("Add a way to stop", ConditionEditors.StopKinds(), condition =>
         {
             _justAdded = condition;
             Commit(_setter with { Until = [.. _setter.Until, condition] });
             BuildStop();
             _justAdded = null;
         }));
-    }
-
-    private static DropDownButton AddConditionButton(string text, IReadOnlyList<ConditionEditors.Kind> kinds, Action<Condition> add)
-    {
-        var menu = new MenuFlyout();
-        foreach (ConditionEditors.Kind kind in kinds)
-        {
-            var item = new MenuFlyoutItem { Text = kind.Label, Icon = new FontIcon { Glyph = kind.Glyph } };
-            item.Click += (_, _) => add(kind.Create());
-            menu.Items.Add(item);
-        }
-
-        return AddButton(text, menu);
     }
 
     // --- Afterwards and presentation --------------------------------------------------------------

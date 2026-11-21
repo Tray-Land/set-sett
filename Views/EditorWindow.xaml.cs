@@ -390,6 +390,7 @@ public sealed partial class EditorWindow : WindowEx
     {
         string name = string.IsNullOrWhiteSpace(setter.Name) ? "Untitled setter" : setter.Name;
         string summary = setter.IsAutomatic ? "Automatic: " + SetterText.When(setter) : setter.IsToggle ? "Toggle on each click" : "On click";
+        bool active = SetterHost.Run.IsActive(setter.Id);
 
         // A disabled setter has no flyout button or tray icon, so this list is where it shows as off.
         double opacity = setter.Enabled ? 1 : 0.55;
@@ -404,7 +405,8 @@ public sealed partial class EditorWindow : WindowEx
             grid.Opacity = opacity;
             icon.Set(setter.Glyph);
             ((TextBlock)text.Children[0]).Text = name;
-            ((TextBlock)text.Children[1]).Text = summary;
+            StatusIndicator.SetSetter((TextBlock)text.Children[1], active, setter.IsToggle);
+            ((TextBlock)text.Children[2]).Text = summary;
         }
         else
         {
@@ -414,6 +416,9 @@ public sealed partial class EditorWindow : WindowEx
             layout.Children.Add(new GlyphView(18, EditorParts.GlyphSlot) { VerticalAlignment = VerticalAlignment.Center }.Set(setter.Glyph));
             var stack = new StackPanel();
             stack.Children.Add(new TextBlock { Text = name, TextTrimming = TextTrimming.CharacterEllipsis });
+            var status = StatusIndicator.Create();
+            StatusIndicator.SetSetter(status, active, setter.IsToggle);
+            stack.Children.Add(status);
             stack.Children.Add(new TextBlock
             {
                 Text = summary,
@@ -427,7 +432,8 @@ public sealed partial class EditorWindow : WindowEx
             item.Content = layout;
         }
 
-        AutomationProperties.SetName(item, name);
+        string state = setter.IsToggle ? "One-click action" : active ? "Active" : "Inactive";
+        AutomationProperties.SetName(item, $"{name}, {state}{(setter.Enabled ? "" : ", disabled")}");
     }
 
     private int IndexOf(string setterId)
