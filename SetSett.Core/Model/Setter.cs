@@ -176,14 +176,28 @@ public sealed record Setter
     /// </summary>
     public bool HasTrigger => IsAutomatic && When.Any(c => c.CanStart && c.IsTrigger);
 
+    /// <summary>A grouped instant participates in its group's All/Any expression.</summary>
+    public bool HasGroupedTrigger => IsAutomatic && When.OfType<ConditionGroup>()
+        .Any(g => g.Descendants().Any(c => c.CanStart && c.IsTrigger));
+
+    public bool HasAnyTrigger => HasTrigger || HasGroupedTrigger;
+
     /// <summary>A click-to-toggle setter or a trigger setter with no stop condition: changes values without a run or put-back.</summary>
     public bool AppliesOnce => IsToggle || (HasTrigger && Until.Count == 0);
 
     /// <summary>A click-to-start setter that stops after a while, so its tray icon can offer other lengths.</summary>
-    public bool HasTimer => Start == StartMode.Manual && Until.Any(c => c is ElapsedCondition);
+    public bool HasTimer => Start == StartMode.Manual && TimerMinutes is not null;
 
     /// <summary>The minutes of its own "after a while" timer, or null without one.</summary>
-    public int? TimerMinutes => Until.OfType<ElapsedCondition>().Select(e => (int?)e.Minutes).Min();
+    public int? TimerMinutes => Until.SelectMany(IndependentTimers).Select(e => (int?)e.Minutes).Min();
+
+    private static IEnumerable<ElapsedCondition> IndependentTimers(Condition condition) => condition switch
+    {
+        ElapsedCondition { Not: false } timer => [timer],
+        ConditionGroup { Not: false } group when group.Match == ConditionMatch.Any || group.Conditions.Count == 1 =>
+            group.Conditions.SelectMany(IndependentTimers),
+        _ => [],
+    };
 
     /// <summary><see cref="TimerChoices"/> as the menu lists them: shortest first, each once, from a minute to a day.</summary>
     public IReadOnlyList<int> TimerMenu => [.. TimerChoices.Where(m => m is > 0 and <= MaxTimerMinutes).Distinct().Order()];

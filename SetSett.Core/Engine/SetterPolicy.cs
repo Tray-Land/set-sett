@@ -35,7 +35,8 @@ public enum StopReason
 /// no run begins and nothing is held to put back.
 /// </param>
 public readonly record struct SetterTransition(
-    string SetterId, bool Start, StopReason Reason = StopReason.Until, bool Renew = false, bool Once = false);
+    string SetterId, bool Start, StopReason Reason = StopReason.Until, bool Renew = false, bool Once = false,
+    bool StartedByInstant = false);
 
 /// <summary>
 /// Decides which setters start and stop given what the sensors see. Pure, so it's unit tested; the
@@ -84,6 +85,12 @@ public static class SetterPolicy
     /// </summary>
     public static bool? StartConditionsHold(Setter setter, SensorSnapshot now)
     {
+        if (setter.HasGroupedTrigger)
+        {
+            return Combine(setter.When.Where(c => c.CanStart)
+                .Select(c => c.IsTrigger ? false : c.Evaluate(new ConditionContext(now))), setter.Match);
+        }
+
         List<Condition> levels = [.. setter.When.Where(c => c.CanStart && !c.IsTrigger)];
         return levels.Count == 0 && setter.HasTrigger
             ? true
@@ -93,6 +100,35 @@ public static class SetterPolicy
     /// <summary>Whether any of the setter's instants fired after <paramref name="sinceUtc"/> and up to now.</summary>
     public static bool TriggerFired(Setter setter, DateTime sinceUtc, SensorSnapshot now) =>
         setter.When.OfType<TimeWindowCondition>().Any(t => t.AtTime && t.FiredSince(sinceUtc, now) is not null);
+
+    private static (bool? Value, bool Fired) AtMoment(Condition condition, DateTime sinceUtc, SensorSnapshot now)
+    {
+        if (condition is TimeWindowCondition { AtTime: true } instant)
+        {
+            bool fired = instant.FiredSince(sinceUtc, now) is not null;
+            return (fired, fired);
+        }
+
+        if (condition is ConditionGroup group)
+        {
+            var children = group.Conditions.Select(c => AtMoment(c, sinceUtc, now)).ToList();
+            bool? value = Combine(children.Select(c => c.Value), group.Match);
+            if (group.Not && value is not null)
+            {
+                value = !value.Value;
+            }
+
+            return (value, value == true && !group.Not && children.Any(c => c.Fired));
+        }
+
+        return (condition.Evaluate(new ConditionContext(now)), false);
+    }
+
+    private static bool GroupedTriggerFired(Setter setter, DateTime sinceUtc, SensorSnapshot now)
+    {
+        var answers = setter.When.Where(c => c.CanStart).Select(c => AtMoment(c, sinceUtc, now)).ToList();
+        return Combine(answers.Select(a => a.Value), setter.Match) == true && answers.Any(a => a.Fired);
+    }
 
     public static bool StopConditionMet(Setter setter, SetterRun run, SensorSnapshot now) =>
         setter.Until.Any(c => c.Evaluate(run.Context(now)) == true);
@@ -119,7 +155,8 @@ public static class SetterPolicy
             at = boundary;
             context = new ConditionContext(now with { UtcNow = at });
             bool? held = Combine(
-                setter.When.Where(c => c.CanStart && !c.IsTrigger).Select(c => c.Sensors.HasFlag(Sensors.Clock) ? c.Evaluate(context) : null),
+                setter.When.Where(c => c.CanStart && (setter.HasGroupedTrigger || !c.IsTrigger))
+                    .Select(c => ClockAnswer(c, context)),
                 setter.Match);
             if (held == false)
             {
@@ -128,6 +165,22 @@ public static class SetterPolicy
         }
 
         return false;
+    }
+
+    private static bool? ClockAnswer(Condition condition, ConditionContext context)
+    {
+        if (condition.IsTrigger)
+        {
+            return false;
+        }
+
+        if (condition is ConditionGroup group)
+        {
+            bool? answer = Combine(group.Conditions.Select(c => ClockAnswer(c, context)), group.Match);
+            return group.Not && answer is not null ? !answer.Value : answer;
+        }
+
+        return condition.Sensors.HasFlag(Sensors.Clock) ? condition.Evaluate(context) : null;
     }
 
     /// <summary>
@@ -163,6 +216,12 @@ public static class SetterPolicy
 
         foreach (Setter setter in setters)
         {
+            if (setter.HasGroupedTrigger)
+            {
+                state = StepGrouped(setter, state, now, triggersSince, transitions);
+                continue;
+            }
+
             bool? holds = setter.IsAutomatic ? StartConditionsHold(setter, now) : null;
             bool trigger = setter.HasTrigger;
             bool fired = trigger && triggersSince is not null && triggersSince.TryGetValue(setter.Id, out DateTime since0) &&
@@ -250,6 +309,80 @@ public static class SetterPolicy
         return (transitions, state);
     }
 
+    private static RunState StepGrouped(
+        Setter setter, RunState state, SensorSnapshot now, IReadOnlyDictionary<string, DateTime>? triggersSince,
+        List<SetterTransition> transitions)
+    {
+        bool? holds = StartConditionsHold(setter, now);
+        bool fired = triggersSince is not null && triggersSince.TryGetValue(setter.Id, out DateTime since) &&
+            GroupedTriggerFired(setter, since, now);
+        SetterRun? run = state.RunOf(setter.Id);
+        if (run is not null)
+        {
+            if (!setter.CanRun || setter.IsToggle)
+            {
+                transitions.Add(new(setter.Id, false, StopReason.Edited));
+            }
+            else if (!setter.Enabled)
+            {
+                transitions.Add(new(setter.Id, false, StopReason.Disabled));
+            }
+            else if (fired)
+            {
+                transitions.Add(new(setter.Id, true, Renew: setter.Until.Count > 0,
+                    Once: setter.Until.Count == 0, StartedByInstant: true));
+            }
+            else if (!run.StartedByInstant && holds == false)
+            {
+                transitions.Add(new(setter.Id, false, StopReason.ConditionsEnded));
+            }
+            else if (!run.StartedByInstant && holds == true && ConditionsEndedSince(setter, run.ActiveSinceUtc, now))
+            {
+                transitions.Add(new(setter.Id, true, Renew: true));
+            }
+            else if (StopConditionMet(setter, run, now))
+            {
+                transitions.Add(new(setter.Id, false, StopReason.Until));
+                if (holds != false)
+                {
+                    state = state.WithLatch(setter.Id, now.UtcNow);
+                }
+            }
+
+            return state;
+        }
+
+        if (!setter.Enabled || !setter.CanRun)
+        {
+            return state.WithoutLatch(setter.Id);
+        }
+
+        if (fired)
+        {
+            transitions.Add(new(setter.Id, true, Once: setter.Until.Count == 0, StartedByInstant: true));
+            return state.WithoutLatch(setter.Id);
+        }
+
+        if (state.IsLatched(setter.Id))
+        {
+            bool ended = holds == false ||
+                (holds == true && state.LatchedSinceUtc(setter.Id) is { } latched && ConditionsEndedSince(setter, latched, now));
+            if (!ended)
+            {
+                return state;
+            }
+
+            state = state.WithoutLatch(setter.Id);
+        }
+
+        if (holds == true)
+        {
+            transitions.Add(new(setter.Id, true));
+        }
+
+        return state;
+    }
+
     /// <summary>The conditions being watched right now: start conditions of enabled automatic setters, stop conditions of running ones.</summary>
     public static IEnumerable<(Condition Condition, ConditionContext Context)> Watched(
         IReadOnlyList<Setter> setters, RunState state, SensorSnapshot now)
@@ -281,7 +414,7 @@ public static class SetterPolicy
     /// <summary>Process names some watched condition asks about, normalized.</summary>
     public static IReadOnlySet<string> ProcessesWatched(IReadOnlyList<Setter> setters, RunState state, SensorSnapshot now) =>
         Watched(setters, state, now)
-            .Select(w => w.Condition)
+            .SelectMany(w => w.Condition is ConditionGroup group ? group.Descendants() : [w.Condition])
             .OfType<ProcessCondition>()
             .Select(p => p.Normalized)
             .Where(name => name.Length > 0)

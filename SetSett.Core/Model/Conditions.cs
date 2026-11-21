@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using SetSett.Engine;
 using SetSett.Solar;
 
 namespace SetSett.Model;
@@ -24,6 +25,7 @@ namespace SetSett.Model;
 [JsonDerivedType(typeof(ElapsedCondition), "elapsed")]
 [JsonDerivedType(typeof(ClockCondition), "clock")]
 [JsonDerivedType(typeof(CpuQuietCondition), "cpuQuiet")]
+[JsonDerivedType(typeof(ConditionGroup), "group")]
 public abstract record Condition
 {
     public bool Not { get; init; }
@@ -51,6 +53,45 @@ public abstract record Condition
 
     /// <summary>The raw answer, before <see cref="Not"/>.</summary>
     protected abstract bool? Test(ConditionContext context);
+}
+
+/// <summary>Conditions combined as one part of a setter's start or stop expression.</summary>
+public sealed record ConditionGroup : Condition
+{
+    public ConditionMatch Match { get; set; } = ConditionMatch.All;
+
+    public IReadOnlyList<Condition> Conditions { get; set; } = [];
+
+    public override bool CanStart => Conditions.All(c => c.CanStart);
+
+    public override Sensors Sensors => Conditions.Aggregate(Sensors.None, (all, c) => all | c.Sensors);
+
+    public override DateTime? NextChange(ConditionContext context) => Conditions
+        .Select(c => c.NextChange(context))
+        .Where(at => at > context.Now.UtcNow)
+        .Min();
+
+    protected override bool? Test(ConditionContext context) => SetterPolicy.Combine(
+        Conditions.Select(c => c.IsTrigger ? false : c.Evaluate(context)), Match);
+
+    public bool Equals(ConditionGroup? other) =>
+        other is not null && base.Equals(other) && Match == other.Match && Conditions.SequenceEqual(other.Conditions);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(base.GetHashCode());
+        hash.Add(Match);
+        foreach (Condition condition in Conditions)
+        {
+            hash.Add(condition);
+        }
+
+        return hash.ToHashCode();
+    }
+
+    public IEnumerable<Condition> Descendants() => Conditions.SelectMany(c =>
+        c is ConditionGroup group ? group.Descendants().Prepend(c) : [c]);
 }
 
 [Flags]

@@ -113,6 +113,11 @@ public static class SetterImport
             return "The setter contains an incomplete condition.";
         }
 
+        if (setter.When.Concat(setter.Until).Any(InvalidGroup))
+        {
+            return "The setter contains an incomplete or invalid condition group.";
+        }
+
         if (setter.IsAutomatic && setter.When.Count == 0)
         {
             return "An automatic setter needs a start condition.";
@@ -125,4 +130,7 @@ public static class SetterImport
 
         return null;
     }
+
+    private static bool InvalidGroup(Condition condition) => condition is ConditionGroup group &&
+        (group.Not || group.Conditions is null || group.Conditions.Any(c => c is null || InvalidGroup(c)));
 }

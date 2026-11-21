@@ -11,6 +11,9 @@ public sealed record SetterRun(string SetterId, DateTime ActiveSinceUtc)
     /// </summary>
     public DateTime? TimerEndsUtc { get; set; }
 
+    /// <summary>A grouped instant started this run, so ending a level condition does not stop it.</summary>
+    public bool StartedByInstant { get; set; }
+
     /// <summary>What this run's stop conditions are evaluated against.</summary>
     public ConditionContext Context(SensorSnapshot now) => new(now, ActiveSinceUtc, TimerEndsUtc);
 
@@ -21,12 +24,34 @@ public sealed record SetterRun(string SetterId, DateTime ActiveSinceUtc)
     public DateTime? EndsAtUtc(Setter setter, SensorSnapshot now)
     {
         ConditionContext context = Context(now);
-        return setter.Until.Select(c => c switch
+        return setter.Until.Select(c => GuaranteedEnd(c, context)).Min();
+    }
+
+    private static DateTime? GuaranteedEnd(Condition condition, ConditionContext context)
+    {
+        if (condition.Not)
+        {
+            return null;
+        }
+
+        return condition switch
         {
             ElapsedCondition e => e.EndsAtUtc(context),
             ClockCondition k => k.EndsAtUtc(context),
+            ConditionGroup { Conditions.Count: > 0 } group => GroupEnd(group, context),
             _ => null,
-        }).Min();
+        };
+    }
+
+    private static DateTime? GroupEnd(ConditionGroup group, ConditionContext context)
+    {
+        List<DateTime?> ends = [.. group.Conditions.Select(c => GuaranteedEnd(c, context))];
+        if (group.Match == ConditionMatch.All)
+        {
+            return ends.Any(end => end is null) ? null : ends.Max();
+        }
+
+        return ends.Min();
     }
 }
 

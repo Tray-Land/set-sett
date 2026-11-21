@@ -112,6 +112,7 @@ public static class SetterText
     /// <summary>A start condition as a phrase: "after sunset", "connected to Home Wi-Fi".</summary>
     public static string Condition(Condition condition) => condition switch
     {
+        ConditionGroup g => Group(g, stop: false),
         TimeWindowCondition t => Hours(t),
         SunCondition s => Sun(s),
         NetworkCondition n => $"{(n.Not ? "not connected" : "connected")} to {Named(n.Network, "a network")}",
@@ -148,6 +149,7 @@ public static class SetterText
     /// <summary>A stop condition as an "until" phrase: "for 30 min", "until 5:00 PM", "until blender closes".</summary>
     public static string Until(Condition condition) => condition switch
     {
+        ConditionGroup g => Group(g, stop: true),
         ElapsedCondition e => $"for {Minutes(e.Minutes)}",
         ClockCondition c => $"until {Time(c.At)}",
         CpuQuietCondition c => $"until the CPU stays under {c.Percent}% for {Minutes(c.Minutes)}",
@@ -167,6 +169,7 @@ public static class SetterText
     /// </summary>
     public static string? Missing(Condition condition, bool hasHome) => condition switch
     {
+        ConditionGroup { Conditions.Count: 0 } => "Add conditions to this group",
         NetworkCondition n when string.IsNullOrWhiteSpace(n.Network) => "Pick a network",
         DeviceCondition d when string.IsNullOrWhiteSpace(d.Device) => "Pick a device",
         ProcessCondition p when string.IsNullOrWhiteSpace(p.Process) => "Pick an app",
@@ -174,6 +177,17 @@ public static class SetterText
         SunCondition when !hasHome => "Set your location",
         _ => null,
     };
+
+    private static string Group(ConditionGroup group, bool stop)
+    {
+        if (group.Conditions.Count == 0)
+        {
+            return "an empty group";
+        }
+
+        string join = group.Match == ConditionMatch.All ? " and " : " or ";
+        return "(" + string.Join(join, group.Conditions.Select(c => stop ? Until(c) : Condition(c))) + ")";
+    }
 
     /// <summary>"after sunset and on weekdays", for an automatic setter's start.</summary>
     public static string When(Setter setter) => setter.When.Count == 0
@@ -209,6 +223,19 @@ public static class SetterText
         }
 
         string starts = setter.IsAutomatic ? When(setter) : "when you click it";
+        if (setter.HasGroupedTrigger)
+        {
+            string stopText = setter.Until.Count == 0 ? "" : " Either kind of run can also stop on a stop condition.";
+            return $"Changes: {Changes(setter, catalog)}.\n" +
+                   $"Starts: {starts}.\n" +
+                   $"A condition-started run stops when its conditions end.{stopText}\n" +
+                   (setter.Until.Count == 0
+                       ? "At a time, it applies the values once and leaves them."
+                       : setter.PutBack
+                           ? "Afterwards: puts each setting back if it has not changed."
+                           : "Afterwards: leaves the new setting values in place.");
+        }
+
         List<string> stops = setter.HasTrigger
             ? []
             : setter.IsAutomatic

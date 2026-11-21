@@ -91,15 +91,17 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
                     : $"Step: stop {Name(setters, transition.SetterId)} ({transition.Reason})");
             if (transition.Renew)
             {
-                await RenewAsync(setters.First(s => s.Id == transition.SetterId), now);
+                await RenewAsync(setters.First(s => s.Id == transition.SetterId), now, transition.StartedByInstant);
             }
             else if (transition.Once)
             {
-                await ApplyOnceAsync(setters.First(s => s.Id == transition.SetterId));
+                await ApplyOnceAsync(setters.First(s => s.Id == transition.SetterId),
+                    supersedesClaims: transition.StartedByInstant);
             }
             else if (transition.Start)
             {
-                await StartAsync(setters.First(s => s.Id == transition.SetterId), now);
+                Setter setter = setters.First(s => s.Id == transition.SetterId);
+                await StartAsync(setter, new SetterRun(setter.Id, now.UtcNow) { StartedByInstant = transition.StartedByInstant });
             }
             else
             {
@@ -121,7 +123,7 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
     {
         Dictionary<string, DateTime> since = [];
         Dictionary<string, (DateTime, IReadOnlyList<Condition>)> next = [];
-        foreach (Setter setter in setters.Where(s => s.HasTrigger))
+        foreach (Setter setter in setters.Where(s => s.HasAnyTrigger))
         {
             bool unchanged = _checked.TryGetValue(setter.Id, out var seen) && seen.When.SequenceEqual(setter.When);
             since[setter.Id] = unchanged ? seen.CheckedUtc : now.UtcNow;
@@ -133,7 +135,7 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
     }
 
     /// <summary>A click-to-toggle setter or an instant with no stop condition: changes values without a run or put-back.</summary>
-    private async Task ApplyOnceAsync(Setter setter)
+    private async Task ApplyOnceAsync(Setter setter, bool supersedesClaims = false)
     {
         if (!setter.CanRun || !setter.Enabled)
         {
@@ -141,7 +143,7 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
         }
 
         Log.Info("Engine", $"Applying {setter.Name} [{setter.Id}] once: {setter.Changes.Count} change(s)");
-        await ApplyChangesAsync(setter, _ => true, claim: false);
+        await ApplyChangesAsync(setter, _ => true, claim: false, supersedesClaims: supersedesClaims);
     }
 
     /// <summary>Starts a run with saved snapshots, or switches a click-to-toggle setter once with no run.</summary>
@@ -192,9 +194,9 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
     /// still has the setter's value keeps its snapshot and isn't written, so nothing flickers. One that
     /// changed is set again, with what it reads now as the snapshot, the same as entering a window.
     /// </summary>
-    private async Task RenewAsync(Setter setter, SensorSnapshot now)
+    private async Task RenewAsync(Setter setter, SensorSnapshot now, bool startedByInstant)
     {
-        State = State.WithRun(new SetterRun(setter.Id, now.UtcNow));
+        State = State.WithRun(new SetterRun(setter.Id, now.UtcNow) { StartedByInstant = startedByInstant });
         store.Save(State);
         await ApplyChangesAsync(setter, _ => true, skipIfAlreadySet: true);
     }
@@ -268,7 +270,7 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
     private static string Name(IReadOnlyList<Setter> setters, string id) =>
         setters.FirstOrDefault(s => s.Id == id) is { } s ? $"{s.Name} [{id}]" : id;
 
-    private async Task ApplyChangesAsync(Setter setter, Func<SettingChange, bool> include, bool skipIfAlreadySet = false, bool claim = true)
+    private async Task ApplyChangesAsync(Setter setter, Func<SettingChange, bool> include, bool skipIfAlreadySet = false, bool claim = true, bool supersedesClaims = false)
     {
         bool hold = claim && setter.PutBack;
         // Unavailable family members wait until the loop ends: a PC without a battery has no
@@ -330,9 +332,9 @@ public sealed class SetterEngine(ISettingCatalog catalog, IRunStateStore store)
             if (await setting.WriteAsync(value))
             {
                 Log.Info("Engine", $"Set {change.SettingId} for {setter.Name}");
-                if (setter.IsToggle && State.ClaimsOn(change.SettingId).Count > 0)
+                if ((setter.IsToggle || supersedesClaims) && State.ClaimsOn(change.SettingId).Count > 0)
                 {
-                    // This is a lasting user change, even if a later click returns to a claimed value.
+                    // This is a lasting change, even if the value matches an existing claim.
                     State = State.WithClaims(change.SettingId, []);
                     store.Save(State);
                 }
