@@ -2,6 +2,8 @@
 
 What comes after v1: settings and conditions to add, how each could be built, and the larger pieces (tray icons that show more, waking Set Sett on a schedule, outside plugins).
 
+For research into Windows settings APIs and taskbar alignment, see [Windows settings APIs](WINDOWS_SETTINGS_APIS.md).
+
 ## How things are added today (tier 1 plugins)
 
 Settings and conditions are compiled-in plugins behind two seams, so adding one doesn't touch the engine:
