@@ -41,6 +41,7 @@ public partial class App : Application
     private RegisteredWaitHandle? _showWait;
     private AppInstance? _appInstance;
     private TrayIcon? _trayIcon;
+    private TrayIconTooltip? _trayIconTooltip;
     private SetterTrayIcons? _setterIcons;
     private TrayFlyoutWindow? _flyout;
     private EditorWindow? _editor;
@@ -327,13 +328,18 @@ public partial class App : Application
     private void InitializeTrayIcon()
     {
         _trayIcon = new TrayIcon(1, TrayIconPath, DisplayName);
+        _trayIconTooltip = new TrayIconTooltip(_trayIcon);
         _trayIcon.Selected += (_, _) => EnsureFlyout().Toggle();
         _trayIcon.ContextMenu += TrayIcon_ContextMenu;
         _trayIcon.IsVisible = true;
-        WindowPlacementService.SetTrayIcon(_trayIcon);
+        WindowPlacementService.SetTrayIcon(_trayIcon, _trayIconTooltip.WindowHandle);
         SystemThemeService.Changed += (_, _) => _dispatcher?.TryEnqueue(() =>
         {
-            _trayIcon?.SetIcon(TrayIconPath);
+            if (_trayIcon is { } icon)
+            {
+                icon.SetIcon(TrayIconPath);
+                _trayIconTooltip?.Restore();
+            }
             _setterIcons?.Redraw();
         });
         SystemThemeService.AccentChanged += OnAccentChanged;
@@ -466,6 +472,7 @@ public partial class App : Application
             _trayIcon.IsVisible = false;
             _trayIcon.Dispose();
             _trayIcon = null;
+            _trayIconTooltip = null;
         }
 
         _showWait?.Unregister(null);

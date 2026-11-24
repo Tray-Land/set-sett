@@ -31,11 +31,13 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
     private const int MaxTooltipLength = 127;
     private static readonly TimeSpan ShortestRedraw = TimeSpan.FromSeconds(1);
 
-    private sealed class Slot(TrayIcon icon, string setterId)
+    private sealed class Slot(TrayIcon icon, string setterId, TrayIconTooltip tooltip)
     {
         public TrayIcon Icon { get; } = icon;
 
         public string SetterId { get; } = setterId;
+
+        public TrayIconTooltip TooltipUpdater { get; } = tooltip;
 
         public string Key { get; set; } = "";
 
@@ -189,8 +191,9 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
 
     private Slot Create(Setter setter)
     {
-        var icon = new TrayIcon(setter.TrayIconId, AppIconPath, Name(setter));
-        var slot = new Slot(icon, setter.Id);
+        string name = Name(setter);
+        var icon = new TrayIcon(setter.TrayIconId, AppIconPath, name.Length > MaxTooltipLength ? name[..MaxTooltipLength] : name);
+        var slot = new Slot(icon, setter.Id, new TrayIconTooltip(icon));
         icon.Selected += (_, _) => OnSelected(slot.SetterId);
         icon.ContextMenu += (_, args) => args.Flyout = BuildMenu(slot.SetterId);
         icon.IsVisible = true;
@@ -338,6 +341,7 @@ internal sealed class SetterTrayIcons(Action showFlyout, Action<string> editSett
         {
             slot.Icon.SetIcon(Win32Interop.GetIconIdFromIcon((nint)icon.Value));
         }
+        slot.TooltipUpdater.Restore();
 
         // The shell copied the image; the previous handle can go.
         Release(slot);

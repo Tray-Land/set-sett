@@ -1,5 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -28,27 +26,12 @@ internal static class WindowPlacementService
 
     /// <summary>
     /// Captures the hidden message window WinUIEx uses for the tray icon so the icon rectangle can
-    /// be queried with Shell_NotifyIconGetRect. WinUIEx does not expose it, so this uses reflection
-    /// and silently degrades to cursor/taskbar placement if the internals change.
+    /// be queried with Shell_NotifyIconGetRect. If unavailable, placement falls back to the taskbar.
     /// </summary>
-    [DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, typeof(TrayIcon))]
-    public static void SetTrayIcon(TrayIcon trayIcon)
+    public static void SetTrayIcon(TrayIcon trayIcon, nint windowHandle)
     {
         _trayIconId = trayIcon.TrayIconId;
-        try
-        {
-            FieldInfo? field = typeof(TrayIcon).GetField("_windowHandle", BindingFlags.Instance | BindingFlags.NonPublic);
-            _trayIconWindowHandle = field?.GetValue(trayIcon) switch
-            {
-                nint handle => handle,
-                object boxed => ReadHandle(boxed),
-                _ => 0,
-            };
-        }
-        catch
-        {
-            _trayIconWindowHandle = 0;
-        }
+        _trayIconWindowHandle = windowHandle;
     }
 
     /// <summary>Moves and resizes <paramref name="window"/> (logical size) next to the tray icon.</summary>
@@ -152,15 +135,4 @@ internal static class WindowPlacementService
     }
 
     private static int ToPhysical(int logical, uint dpi) => (int)Math.Ceiling(logical * dpi / 96.0);
-
-    private static nint ReadHandle(object boxed)
-    {
-        // WinUIEx stores its own CsWin32 HWND struct; read its single pointer-sized field.
-        FieldInfo? valueField = boxed.GetType().GetField("Value", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        return valueField?.GetValue(boxed) switch
-        {
-            nint n => n,
-            _ => 0,
-        };
-    }
 }
