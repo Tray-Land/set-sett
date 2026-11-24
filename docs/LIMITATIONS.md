@@ -10,10 +10,12 @@ An app also can't tell reliably whether its icon is visible. `Shell_NotifyIconGe
 
 **What Set Sett does.**
 - When you turn on "Its own tray icon", the editor explains the overflow and links straight to the taskbar settings page (`ms-settings:taskbar`).
-- Each setter gets a tray icon id when it's created, and ids are never reused. Windows remembers the show/hide choice per app and id, so reusing an id would give a new setter the old one's visibility.
+- Each setter gets a tray icon id when it's created, and ids are never reused, so a new setter doesn't inherit an old one's visibility by reusing its id.
 - Everything a setter's icon does is also available in the flyout and in the main icon's right-click menu, so a hidden icon never strands a setter.
 
-**Still unknown.** For packaged apps, Windows may key that choice partly on the executable's path, and an MSIX update changes the path because it includes the version. Whether the choice survives a Store update needs to be checked on a real update before release.
+**After updates.** A Store or GitHub package update can change the executable's path. Set Sett's icons use a window and numeric id, not a stable shell GUID, so Windows may treat an updated icon as new and return it to overflow. If that happens, drag it back or turn it on again in taskbar settings. This still needs checking with a real Set Sett update.
+
+**What would change it.** Microsoft recommends a stable GUID for each notification icon. WinUIEx doesn't expose one, so using GUIDs would need changes to the whole icon lifecycle, including tooltip updates and positioning. Microsoft's [documentation](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-notifyicondataw#troubleshooting) describes an exception for moved executables Authenticode-signed by the same company; signing an MSIX bundle alone doesn't establish that the executable has its own signature. An [unsigned Windows 11 test](https://github.com/microsoft/windows-rs/issues/5284) preserved the choice across a move, but that behavior shouldn't be assumed on every supported Windows version.
 
 ## Put-back checks happen when a setter stops
 
